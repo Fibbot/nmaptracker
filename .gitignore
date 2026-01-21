@@ -1,0 +1,16 @@
+.DS_Store
+# Go build/cache artifacts
+.gocache/
+.gomodcache/
+/nmap-tracker
+*.exe
+*.test
+*.out
+*.db
+go.work
+go.work.sum
+dist/
+
+# IDE/editor
+.idea/
+.vscode/
