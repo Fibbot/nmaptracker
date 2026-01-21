@@ -1,0 +1,117 @@
+{
+  "project": {
+    "id": 1,
+    "name": "Acme",
+    "created_at": "2024-01-02T03:04:05Z",
+    "updated_at": "2024-01-02T03:04:05Z"
+  },
+  "scope_definitions": [
+    {
+      "id": 1,
+      "project_id": 1,
+      "definition": "10.0.0.0/24",
+      "type": "include",
+      "created_at": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": 2,
+      "project_id": 1,
+      "definition": "10.0.0.5",
+      "type": "exclude",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "scan_imports": [
+    {
+      "id": 1,
+      "project_id": 1,
+      "filename": "scan.xml",
+      "import_time": "2024-01-03T00:00:00Z",
+      "hosts_found": 2,
+      "ports_found": 3
+    }
+  ],
+  "hosts": [
+    {
+      "host": {
+        "id": 1,
+        "project_id": 1,
+        "ip_address": "10.0.0.10",
+        "hostname": "web-01",
+        "os_guess": "Linux",
+        "in_scope": true,
+        "notes": "first host",
+        "created_at": "2024-01-02T04:05:06Z",
+        "updated_at": "2024-01-02T04:05:06Z"
+      },
+      "ports": [
+        {
+          "id": 1,
+          "host_id": 1,
+          "port_number": 22,
+          "protocol": "tcp",
+          "state": "open",
+          "service": "ssh",
+          "version": "OpenSSH 8.2",
+          "product": "OpenSSH",
+          "extra_info": "Ubuntu",
+          "work_status": "flagged",
+          "script_output": "ssh-hostkey: example",
+          "notes": "check ssh",
+          "last_seen": "2024-01-04T01:02:03Z",
+          "created_at": "2024-01-02T05:06:07Z",
+          "updated_at": "2024-01-02T05:06:07Z"
+        },
+        {
+          "id": 2,
+          "host_id": 1,
+          "port_number": 80,
+          "protocol": "tcp",
+          "state": "closed",
+          "service": "",
+          "version": "",
+          "product": "",
+          "extra_info": "",
+          "work_status": "scanned",
+          "script_output": "",
+          "notes": "",
+          "last_seen": "2024-01-04T01:02:03Z",
+          "created_at": "2024-01-02T05:06:07Z",
+          "updated_at": "2024-01-02T05:06:07Z"
+        }
+      ]
+    },
+    {
+      "host": {
+        "id": 2,
+        "project_id": 1,
+        "ip_address": "10.0.0.20",
+        "hostname": "dns-01",
+        "os_guess": "FreeBSD",
+        "in_scope": true,
+        "notes": "dns host",
+        "created_at": "2024-01-02T04:05:06Z",
+        "updated_at": "2024-01-02T04:05:06Z"
+      },
+      "ports": [
+        {
+          "id": 3,
+          "host_id": 2,
+          "port_number": 53,
+          "protocol": "udp",
+          "state": "open",
+          "service": "domain",
+          "version": "",
+          "product": "",
+          "extra_info": "",
+          "work_status": "in_progress",
+          "script_output": "",
+          "notes": "",
+          "last_seen": "2024-01-05T04:05:06Z",
+          "created_at": "2024-01-02T05:06:07Z",
+          "updated_at": "2024-01-02T05:06:07Z"
+        }
+      ]
+    }
+  ]
+}
