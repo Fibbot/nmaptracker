@@ -1,0 +1,4 @@
+project_id,project_name,host_id,ip_address,hostname,os_guess,in_scope,host_notes,port_id,port_number,protocol,state,service,version,product,extra_info,work_status,script_output,port_notes,last_seen
+1,Acme,1,10.0.0.10,web-01,Linux,true,first host,1,22,tcp,open,ssh,OpenSSH 8.2,OpenSSH,Ubuntu,flagged,ssh-hostkey: example,check ssh,2024-01-04T01:02:03Z
+1,Acme,1,10.0.0.10,web-01,Linux,true,first host,2,80,tcp,closed,,,,,scanned,,,2024-01-04T01:02:03Z
+1,Acme,2,10.0.0.20,dns-01,FreeBSD,true,dns host,3,53,udp,open,domain,,,,in_progress,,,2024-01-05T04:05:06Z

@@ -209,6 +209,12 @@ go test ./...
 3. Scope matching (CIDR, ranges, exclusions)
 4. Bulk operations atomicity
 
+## Implementation Notes
+- SQLite driver: Use `modernc.org/sqlite` for a pure Go, cross-compile-friendly build; only switch to `mattn/go-sqlite3` if we later accept CGO for performance reasons.
+- UI approach: Server-rendered HTML with `templ` plus htmx for progressive enhancements; no SPA.
+- Work status scope: Work status is stored on all ports, but UI/handlers only expose state transitions for ports with `state=open`; closed/filtered ports stay at the default `scanned` status and are excluded from workflow toggles.
+- Additive imports: Imports never delete ports; rely on `last_seen` to surface “not seen recently” without removal.
+
 ## Future Considerations (Stretch Goals)
 
 These are explicitly **not** in v1 but worth keeping in mind architecturally:
