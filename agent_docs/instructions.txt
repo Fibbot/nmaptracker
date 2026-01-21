@@ -1,0 +1,637 @@
+1. Agent may only touch code in the current stage.
+2. Agent must add/adjust tests for the stage.
+3. Agent must demonstrate: go test ./... green.
+4. Only then is the next stage unlocked.
+5. If we've completed the phase, move the Phase to the bottom of this document as "COMPLETED". Else, add notes of what was completed directly under the phase title in this document.
+
+---
+
+## **0) Pre-flight: lock decisions and define “done”**
+
+  
+
+**Goal:** remove ambiguity so implementation doesn’t drift.
+
+  
+
+**Decisions to lock (write into SPEC as an “Implementation Notes” section):**
+
+- SQLite driver: modernc.org/sqlite vs mattn/go-sqlite3 (cross-compile preference suggests modernc). 
+    
+- UI approach: server-rendered + htmx + templ vs plain html/template. 
+    
+- “Work status” applies to all ports or only open ports? Spec says “each open port has a work status” but ERD puts work_status on PORT generally; clarify enforcement at UI/handler level.   
+    
+- Additive imports “never remove ports”: confirm whether you ever want to mark a port as “not seen recently” vs actually deleting it (you already have last_seen).   
+    
+
+  
+
+**Exit criteria:**
+
+- A short “Implementation Notes” section committed that answers the above in plain language.
+    
+- No code changes besides docs.
+    
+
+---
+
+## **1) Repo scaffold + CI-quality test harness**
+
+  
+
+**Goal:** establish project structure, build, lint (optional), and test conventions so every later step has a place to land.
+
+  
+
+**Work:**
+
+- Create the directory structure from SPEC. 
+    
+- Add go.mod, cmd/nmap-tracker/main.go with placeholder commands (serve, import, export, projects). 
+    
+- Add internal/ packages as empty shells (compile-only).
+    
+- Add Makefile targets: test, build, build-all (even if build-all is stub initially). 
+    
+
+  
+
+**Tests:**
+
+- go test ./... runs and passes (even if only has a couple trivial tests).
+    
+- Basic TestMain / helpers conventions established (e.g., temp dirs, temp DB).
+    
+
+  
+
+**Exit criteria (must pass):**
+
+- go test ./... green.
+    
+- go build ./cmd/nmap-tracker green.
+    
+- make test and make build green.
+    
+
+---
+
+## **2) Database schema + migrations (no business logic yet)**
+
+  
+
+**Goal:** implement ERD faithfully, with migrations and indexes.
+
+  
+
+**Work:**
+
+- Create migrations in internal/db/migrations/ for: PROJECT, SCOPE_DEFINITION, SCAN_IMPORT, HOST, PORT. 
+    
+- Include indexes listed in ERD. 
+    
+- Implement internal/db/db.go with:
+    
+    - SQLite open
+        
+    - WAL mode enabled
+        
+    - migration runner embedded in binary (as spec says) 
+        
+    
+
+  
+
+**Tests:**
+
+- Migration test: apply migrations to empty DB, then verify tables + indexes exist.
+    
+- Smoke test: open DB twice concurrently (WAL mode sanity).
+    
+
+  
+
+**Exit criteria:**
+
+- Schema matches ERD (columns, constraints, UNIQUEs, ON DELETE CASCADE). 
+    
+- Migration test green.
+    
+
+---
+
+## **3) Data access layer (CRUD) for Project/Scope/Host/Port/ScanImport**
+
+  
+
+**Goal:** stable primitives for the rest of the app.
+
+  
+
+**Work:**
+
+- Implement models structs (models.go) aligned to schema. 
+    
+- Implement CRUD:
+    
+    - project.go: create/list/delete
+        
+    - scope.go: add/list/delete scope definitions by project
+        
+    - host.go: upsert host by (project_id, ip_address) 
+        
+    - port.go: upsert port by (host_id, port_number, protocol) 
+        
+    - scan_import.go: insert import record
+        
+    
+
+  
+
+**Tests:**
+
+- Round-trip tests for each CRUD method using a temp SQLite DB.
+    
+- Constraint tests: uniqueness for host + port tuples. 
+    
+
+  
+
+**Exit criteria:**
+
+- All CRUD tests green.
+    
+- No importer/web code yet depends on untested SQL strings.
+    
+
+---
+
+## **4) Scope matcher (CIDR, range, single IP, exclusions override includes)**
+
+  
+
+**Goal:** deterministic in-scope computation used during import and later filtering.
+
+  
+
+**Work:**
+
+- Implement internal/scope/matcher.go:
+    
+    - Parse definition into a normalized matcher object for:
+        
+        - CIDR
+            
+        - range (a-b)
+            
+        - single IP 
+            
+        
+    - Evaluate:
+        
+        - excluded wins over included
+            
+        - default behavior if no includes? (usually “nothing in scope” unless configured—decide and document)
+            
+        
+    
+
+  
+
+**Tests (priority per spec):**
+
+- CIDR match test cases
+    
+- Range edge cases
+    
+- Exclusion precedence
+    
+- Mixed inputs. 
+    
+
+  
+
+**Exit criteria:**
+
+- 100% green unit tests for matcher.
+    
+- Clear behavior documented for “no includes defined”.
+    
+
+---
+
+## **5) Import parsing: Nmap XML → normalized host/port observations**
+
+  
+
+**Goal:** parse-only; no DB merge yet. Produce a clean internal representation.
+
+  
+
+**Work:**
+
+- Implement internal/importer/xml.go using encoding/xml. 
+    
+- Output an internal struct like:
+    
+    - Hosts: ip, hostname, os_guess, ports[] {port_number, protocol, state, service, version/product/extrainfo, script_output}
+        
+    
+- Decide what to do with ports that are closed/filtered (store them per ERD state enum). 
+    
+
+  
+
+**Tests:**
+
+- Golden-file tests: given sample XML fixtures, assert parsed output matches expected.
+    
+- Include at least:
+    
+    - TCP + UDP
+        
+    - service detection fields
+        
+    - NSE output presence 
+        
+    
+
+  
+
+**Exit criteria:**
+
+- Parsing tests green and stable (fixtures committed).
+    
+
+---
+
+## **6) Import merge logic: observations → DB (additive, never remove, enrich updates)**
+
+  
+
+**Goal:** the most failure-prone logic is locked down with tests before any UI exists.
+
+  
+
+**Work:**
+
+- Implement internal/importer/importer.go orchestration:
+    
+    - Create SCAN_IMPORT row (filename, stats). 
+        
+    - For each host:
+        
+        - Upsert host
+            
+        - Compute in_scope from scope matcher
+            
+        
+    - For each port:
+        
+        - Upsert port
+            
+        - Update service/version/product fields if new scan has richer info (define “richer” explicitly)
+            
+        - Update last_seen
+            
+        - Do **not** delete ports not present in new scan 
+            
+        
+    
+
+  
+
+**Tests (priority per spec):**
+
+- Additive behavior: second import missing ports does not delete them. 
+    
+- Enrichment behavior: second import with -sV updates version/product.
+    
+- Protocol-aware uniqueness: same port number TCP and UDP both exist. 
+    
+- Scope changes: changing scope definitions and re-import updates host.in_scope.
+    
+
+  
+
+**Exit criteria:**
+
+- All merge tests green.
+    
+- Import stats (hosts_found, ports_found) correct. 
+    
+
+---
+
+## **7) Workflow state machine + bulk ops (DB-level correctness)**
+
+  
+
+**Goal:** implement status transitions and bulk updates safely before building UI affordances.
+
+  
+
+**Work:**
+
+- Implement port work_status transitions (manual cycling or explicit set). 
+    
+- Implement bulk ops in internal/db/port.go:
+    
+    - mark all ports on host
+        
+    - mark all ports with port_number across project
+        
+    - mark all ports matching a filter set (for “current view”) 
+        
+    
+- Ensure atomicity (single transaction per bulk op). 
+    
+
+  
+
+**Tests:**
+
+- Transaction tests: partial failure rolls back.
+    
+- Bulk update correctness on representative datasets.
+    
+
+  
+
+**Exit criteria:**
+
+- Bulk ops tests green.
+    
+- No UI yet.
+    
+
+---
+
+## **8) CLI v1: serve/import/export/projects (end-to-end over DB + importer)**
+
+  
+
+**Goal:** a usable tool without UI; validates integration.
+
+  
+
+**Work:**
+
+- serve: starts server (can be stub responding “ok” for now).
+    
+- import: calls importer merge logic.
+    
+- projects list/create: uses project CRUD.
+    
+- export: can be stub until stage 10, but command wiring exists. 
+    
+
+  
+
+**Tests:**
+
+- CLI integration tests (run commands against temp DB).
+    
+- At minimum: create project → import scan → verify counts.
+    
+
+  
+
+**Exit criteria:**
+
+- CLI can create a project and import a scan without panics, and DB contains expected rows.
+    
+
+---
+
+## **9) Web server skeleton + routing + minimal pages**
+
+  
+
+**Goal:** establish the web layer with one trivial page and shared layout before building real screens.
+
+  
+
+**Work:**
+
+- Implement internal/web/server.go, handlers.go with chi router. 
+    
+- Add one page: “Projects list” with create/delete.
+    
+- Decide templating approach (templ vs html/template) per Pre-flight. 
+    
+
+  
+
+**Tests:**
+
+- Handler tests via httptest:
+    
+    - GET /projects returns 200
+        
+    - POST /projects creates and redirects
+        
+    
+
+  
+
+**Exit criteria:**
+
+- Web tests green.
+    
+- Manual smoke: run serve, manage projects in browser.
+    
+
+---
+
+## **10) Core UI screens in order (each screen gated by handler tests)**
+
+  
+
+Build in this order to keep dependencies clean:
+
+  
+
+### **10.1 Project dashboard (counts only first)**
+
+  
+
+**Work:**
+
+- Query counts: total hosts, in-scope vs out-of-scope, counts by work_status. 
+    
+- Progress percentage definition (spec says done/total flagged). 
+    
+
+  
+
+**Tests:** handler test asserts dashboard renders and includes expected counts given seeded DB.
+
+  
+
+**Exit criteria:** dashboard correct for seeded datasets.
+
+  
+
+### **10.2 Host list view (filter + sort)**
+
+  
+
+**Work:**
+
+- Implement host list table: IP, hostname, port count, status summary, in-scope flag. 
+    
+- Filters: by subnet/CIDR, by work_status presence, by in-scope. 
+    
+
+  
+
+**Tests:** query param tests (filter correctness).
+
+  
+
+**Exit criteria:** filters correct; no N+1 query explosions (basic benchmark optional).
+
+  
+
+### **10.3 Host detail view (ports table + inline status toggles)**
+
+  
+
+**Work:**
+
+- Show host metadata + editable notes. 
+    
+- Ports table includes: state, service/version, work_status toggle, per-port notes, script_output collapsible. 
+    
+
+  
+
+**Tests:** toggle endpoint updates DB and returns expected fragment (if using htmx) or redirect.
+
+  
+
+**Exit criteria:** status change and note edits persist, script output is collapsed by default as spec says. 
+
+  
+
+### **10.4 Bulk operations UI**
+
+  
+
+**Work:**
+
+- Buttons/controls for the three bulk ops. 
+    
+
+  
+
+**Tests:** endpoint tests for each bulk op.
+
+  
+
+**Exit criteria:** bulk ops work on real data without timeouts and are atomic (already tested earlier).
+
+---
+
+## **11) Export v1: JSON + CSV**
+
+  
+
+**Goal:** deliver exports from both CLI and UI.
+
+  
+
+**Work:**
+
+- Implement internal/export/json.go and csv.go. 
+    
+- Flatten CSV: host info + port info. 
+    
+- Wire to:
+    
+    - CLI: nmap-tracker export --project ...
+        
+    - Web: “Export” buttons (optional)
+        
+    
+
+  
+
+**Tests:**
+
+- Golden-file exports for seeded DB.
+    
+- CSV header stability test.
+    
+
+  
+
+**Exit criteria:**
+
+- Exports are correct and deterministic for same DB state.
+    
+
+---
+
+## **12) Packaging + cross-platform builds**
+
+  
+
+**Goal:** make the distribution story real.
+
+  
+
+**Work:**
+
+- Confirm sqlite driver supports cross-compilation targets listed. 
+    
+- make build-all produces binaries for each target. 
+    
+- Embed templates/static assets into binary (if not already).
+    
+
+  
+
+**Tests:**
+
+- Build matrix script (even if local) that compiles all targets.
+    
+- Basic “binary runs and prints help” smoke for each.
+    
+
+  
+
+**Exit criteria:**
+
+- All targets compile successfully.
+    
+
+---
+
+## **13) Hardening pass (only after feature-complete)**
+
+  
+
+**Goal:** reduce long-term pain.
+
+  
+
+**Work:**
+
+- DB performance checks for large scopes (indexes already listed). 
+    
+- Import speed: ensure transactions are used efficiently.
+    
+- UI responsiveness (pagination on host list if needed).
+    
+
+  
+
+**Exit criteria:**
+
+- Import of a “large enough” fixture completes within an acceptable time budget (you define it).
+    
+- No obvious UI timeouts on common queries.
+
