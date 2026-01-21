@@ -10,6 +10,7 @@
 go.work
 go.work.sum
 dist/
+nmap-tracker.db*
 
 # IDE/editor
 .idea/
