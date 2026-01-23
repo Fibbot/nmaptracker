@@ -1,0 +1,222 @@
+package web
+
+import (
+	"fmt"
+	"strings"
+
+	templapi "github.com/a-h/templ"
+	"github.com/sloppy/nmaptracker/internal/db"
+)
+
+templ HostDetailPage(project db.Project, host db.Host, ports []db.Port, stateFilters map[string]bool) {
+	@BaseLayout("Host Detail") {
+		<section class="surface">
+			<div class="breadcrumb">
+				<a href="/projects">Projects</a>
+				<span>•</span>
+				<a href={ templapi.SafeURL(fmt.Sprintf("/projects/%d", project.ID)) }>{ project.Name }</a>
+				<span>•</span>
+				<a href={ templapi.SafeURL(fmt.Sprintf("/projects/%d/hosts", project.ID)) }>Hosts</a>
+				<span>•</span>
+				<span>{ host.IPAddress }</span>
+			</div>
+			<div class="hero">
+				<h1>{ host.IPAddress }</h1>
+				<p>{ host.Hostname } · { hostScopeLabel(host) }</p>
+			</div>
+			<div class="section-head">
+				<div class="meta">Exports</div>
+				<div style="display: flex; gap: 10px; flex-wrap: wrap;">
+					<a role="button" class="button-ghost" href={ templapi.SafeURL(fmt.Sprintf("/projects/%d/hosts/%d/export?format=json", project.ID, host.ID)) }>Export JSON</a>
+					<a role="button" class="button-ghost" href={ templapi.SafeURL(fmt.Sprintf("/projects/%d/hosts/%d/export?format=csv", project.ID, host.ID)) }>Export CSV</a>
+				</div>
+			</div>
+		</section>
+
+		<section class="surface" style="margin-top: 24px;">
+			<div class="section-head">
+				<div>
+					<h2>Host overview</h2>
+					<p class="meta">Key details for the selected asset.</p>
+				</div>
+			</div>
+			<div class="stats-row">
+				<div class="stat">
+					<p class="stat-label">Hostname</p>
+					<div class="stat-value" style="font-size: 1rem;">{ host.Hostname }</div>
+				</div>
+				<div class="stat">
+					<p class="stat-label">OS guess</p>
+					<div class="stat-value" style="font-size: 1rem;">{ host.OSGuess }</div>
+				</div>
+				<div class="stat">
+					<p class="stat-label">Scope</p>
+					<div class="stat-value" style="font-size: 1rem;">{ hostScopeLabel(host) }</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="surface" style="margin-top: 24px;">
+			<div class="section-head">
+				<div>
+					<h2>Host bulk update</h2>
+					<p class="meta">Set all open ports on this host to a status.</p>
+				</div>
+			</div>
+			<form method="post" action={ templapi.SafeURL(fmt.Sprintf("/projects/%d/hosts/%d/bulk-status", project.ID, host.ID)) } class="bulk-form">
+				<div class="form-row">
+					<select name="status">
+						<option value="scanned">Scanned</option>
+						<option value="flagged">Flagged</option>
+						<option value="in_progress">In progress</option>
+						<option value="done">Done</option>
+						<option value="parking_lot">Parking lot</option>
+					</select>
+					<button type="submit">Update host ports</button>
+				</div>
+			</form>
+		</section>
+
+		@HostNotesSection(project.ID, host)
+
+		<section class="surface" style="margin-top: 24px;">
+			<div class="section-head">
+				<div>
+					<h2>Ports</h2>
+					<p class="meta">State, service context, work status, and notes.</p>
+				</div>
+			</div>
+			<form method="get" class="state-filters" style="margin-top: 16px;">
+				<div class="filter-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
+					<label>
+						if stateFilters["open"] {
+							<input type="checkbox" name="state" value="open" checked />
+						} else {
+							<input type="checkbox" name="state" value="open" />
+						}
+						Open
+					</label>
+					<label>
+						if stateFilters["closed"] {
+							<input type="checkbox" name="state" value="closed" checked />
+						} else {
+							<input type="checkbox" name="state" value="closed" />
+						}
+						Closed
+					</label>
+					<label>
+						if stateFilters["filtered"] {
+							<input type="checkbox" name="state" value="filtered" checked />
+						} else {
+							<input type="checkbox" name="state" value="filtered" />
+						}
+						Filtered
+					</label>
+				</div>
+				<div style="margin-top: 12px;">
+					<button type="submit">Filter ports</button>
+				</div>
+			</form>
+
+			<div class="table-wrap">
+				<table class="host-table port-table">
+					<thead>
+						<tr>
+							<th>Port</th>
+							<th>State</th>
+							<th>Service</th>
+							<th>Work status</th>
+							<th>Notes</th>
+						</tr>
+					</thead>
+					if len(ports) == 0 {
+						<tbody>
+							<tr>
+								<td colspan="5" class="meta">No ports recorded for this host.</td>
+							</tr>
+						</tbody>
+					} else {
+						for _, port := range ports {
+							@PortRow(project.ID, host.ID, port)
+						}
+					}
+				</table>
+			</div>
+		</section>
+	}
+}
+
+templ HostNotesSection(projectID int64, host db.Host) {
+	<section id="host-notes" class="surface" style="margin-top: 24px;">
+		<div class="section-head">
+			<div>
+				<h2>Host notes</h2>
+				<p class="meta">Capture context and next steps for this asset.</p>
+			</div>
+		</div>
+		<form method="post" action={ templapi.SafeURL(fmt.Sprintf("/projects/%d/hosts/%d/notes", projectID, host.ID)) } hx-post={ fmt.Sprintf("/projects/%d/hosts/%d/notes", projectID, host.ID) } hx-target="#host-notes" hx-swap="outerHTML" class="notes-form">
+			<textarea name="notes" rows="4" placeholder="Add host notes">{ host.Notes }</textarea>
+			<div style="margin-top: 12px;">
+				<button type="submit">Save host notes</button>
+			</div>
+		</form>
+	</section>
+}
+
+templ PortRow(projectID, hostID int64, port db.Port) {
+	<tbody id={ fmt.Sprintf("port-%d", port.ID) }>
+		<tr>
+			<td class="mono">{ fmt.Sprintf("%d/%s", port.PortNumber, port.Protocol) }</td>
+			<td>{ port.State }</td>
+			<td>{ strings.TrimSpace(portServiceSummary(port)) }</td>
+			<td>
+				<form method="post" action={ templapi.SafeURL(fmt.Sprintf("/projects/%d/hosts/%d/ports/%d/status", projectID, hostID, port.ID)) } hx-post={ fmt.Sprintf("/projects/%d/hosts/%d/ports/%d/status", projectID, hostID, port.ID) } hx-target={ fmt.Sprintf("#port-%d", port.ID) } hx-swap="outerHTML" class="status-form">
+					<select name="status">
+						if port.WorkStatus == "scanned" {
+							<option value="scanned" selected>Scanned</option>
+						} else {
+							<option value="scanned">Scanned</option>
+						}
+						if port.WorkStatus == "flagged" {
+							<option value="flagged" selected>Flagged</option>
+						} else {
+							<option value="flagged">Flagged</option>
+						}
+						if port.WorkStatus == "in_progress" {
+							<option value="in_progress" selected>In progress</option>
+						} else {
+							<option value="in_progress">In progress</option>
+						}
+						if port.WorkStatus == "done" {
+							<option value="done" selected>Done</option>
+						} else {
+							<option value="done">Done</option>
+						}
+						if port.WorkStatus == "parking_lot" {
+							<option value="parking_lot" selected>Parking lot</option>
+						} else {
+							<option value="parking_lot">Parking lot</option>
+						}
+					</select>
+					<button type="submit">Update</button>
+				</form>
+			</td>
+			<td>
+				<form method="post" action={ templapi.SafeURL(fmt.Sprintf("/projects/%d/hosts/%d/ports/%d/notes", projectID, hostID, port.ID)) } hx-post={ fmt.Sprintf("/projects/%d/hosts/%d/ports/%d/notes", projectID, hostID, port.ID) } hx-target={ fmt.Sprintf("#port-%d", port.ID) } hx-swap="outerHTML" class="notes-form">
+					<textarea name="notes" rows="2" placeholder="Port notes">{ port.Notes }</textarea>
+					<button type="submit">Save</button>
+				</form>
+			</td>
+		</tr>
+		if strings.TrimSpace(port.ScriptOutput) != "" {
+			<tr class="script-row">
+				<td colspan="5">
+					<details>
+						<summary>Script output</summary>
+						<pre>{ port.ScriptOutput }</pre>
+					</details>
+				</td>
+			</tr>
+		}
+	</tbody>
+}

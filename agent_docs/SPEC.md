@@ -18,7 +18,7 @@ During network penetration tests, especially on large scopes:
 
 - **Language**: Go (for cross-platform single-binary distribution)
 - **Database**: SQLite (embedded, no external dependencies)
-- **Web UI**: Embedded web server serving a local UI (htmx + templ, or embedded SPA)
+- **Web UI**: Embedded web server serving server-rendered HTML via `templ`
 - **Build targets**: linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64
 
 ## Core Functionality
@@ -35,21 +35,24 @@ During network penetration tests, especially on large scopes:
   - Individual IPs (`10.0.0.100`)
 - Define exclusions (same formats, takes precedence over includes)
 - Hosts are automatically flagged as in-scope or out-of-scope on import
-- Out-of-scope hosts are visually distinguished but not rejected (able to disable this functionality as i can see some people not caring)
+- Out-of-scope hosts are visually distinguished but not rejected
+- **Current implementation note**: there is no UI or CLI for editing scope definitions yet. Imports run with `includeAllByDefault=true` (so with no scope definitions, all hosts are in scope). Scope definitions exist in the DB schema and exports.
 
 ### 3. Scan Import
 - Parse nmap XML output (from `-oX` or `-oA`)
-- Support greppable format (`.gnmap`) as secondary option
+- Greppable format (`.gnmap`) is **not implemented yet** (placeholder exists)
+- Current import path is CLI-only (no web UI upload yet)
 - **Merge behavior**:
   - New hosts are added
   - New ports on existing hosts are added
-  - Existing ports get service/version data updated if new scan has richer info
+  - Existing ports get service/version/product/extra_info/script_output updated only when the new scan provides non-empty values
+  - Work status and notes are preserved on existing ports
   - Ports are **never auto-removed** by subsequent scans (prevents partial scan data loss)
   - Each `(host, port, protocol)` tuple is tracked independently
 - Track import history (filename, timestamp, stats) for audit trail
 
 ### 4. Port Tracking Data
-For each open port, store:
+For each observed port (open/closed/filtered/etc.), store:
 - Port number and protocol (TCP/UDP)
 - nmap state (open/closed/filtered)
 - Service name, version, product info (from `-sV`)
@@ -73,37 +76,40 @@ Each **open port** has a work status:
 - `parking_lot` - Noted for later if time permits
 
 State transitions are manual. No automated "this looks interesting" logic.
+Implementation detail: work status is stored for all ports, but the UI and bulk updates only allow changes on `state=open`.
 
 ### 6. Views and Filtering
 
 **Project Dashboard**
 - Total hosts (in-scope vs out-of-scope breakdown)
-- Port status rollup (counts by work_status)
-- Progress percentage (done / total flagged)
-- Subnet breakdown with coverage stats
+- Open-port status rollup (counts by work_status, open ports only)
+- Progress percentage (done / (flagged + in_progress + done + parking_lot), open ports only)
 
 **Host List View**
 - Sortable/filterable table
 - Columns: IP, hostname, port count, status summary, in-scope indicator
-- Filters: by subnet/CIDR, by work_status presence, by in-scope
+- Filters: by subnet/CIDR, by work_status presence (open ports), by in-scope
 - Click through to host detail
+- Pagination (default page size 50; max 500)
+- Status summary is based on open ports only; port count includes all ports
 
 **Host Detail View**
 - Host metadata (IP, hostname, OS guess, notes)
 - Port table with all tracked ports
-- Inline status toggles (click to cycle work_status)
-- Expandable service/version details
-- Expandable script output (collapsed by default)
-- Per-port notes
+- Inline status dropdowns for open ports
+- Per-port notes (open ports)
+- Service/version/product/extra info is shown inline; script output is stored but not displayed in the UI
+- Port table defaults to `state=open` only; can filter by `state` query params
 
 **Bulk Operations**
-- "Mark all ports on this host as [status]"
-- "Mark all [port number] across project as [status]"
-- "Mark all filtered by current view as [status]"
+- "Mark all open ports on this host as [status]"
+- "Mark all open ports with [port number] across project as [status]"
+- "Mark all open ports for hosts in the current host list view as [status]"
 
 ### 7. Export
-- Export to JSON (full project data)
-- Export to CSV (flattened port list with host info)
+- Export to JSON (full project data: project, scope definitions, scan imports, hosts, ports)
+- Export to CSV (flattened port list with host + project info)
+- Web UI supports export by project and by host; CLI exports project data only
 
 ## Architecture Guidelines
 
@@ -120,7 +126,10 @@ nmap-tracker/
 │   │   ├── project.go        # Project CRUD
 │   │   ├── host.go           # Host CRUD
 │   │   ├── port.go           # Port CRUD + bulk ops
-│   │   └── scope.go          # Scope definition logic
+│   │   ├── scope.go          # Scope definition CRUD
+│   │   ├── dashboard.go      # Dashboard stats
+│   │   ├── host_list.go      # Host list aggregation
+│   │   └── scan_import.go    # Scan import records
 │   ├── importer/
 │   │   ├── importer.go       # Import orchestration
 │   │   ├── xml.go            # nmap XML parser
@@ -130,12 +139,11 @@ nmap-tracker/
 │   ├── web/
 │   │   ├── server.go         # HTTP server setup
 │   │   ├── handlers.go       # Route handlers
-│   │   ├── templates/        # templ or html templates
-│   │   └── static/           # CSS, JS if needed
+│   │   └── templates.go      # templ-rendered HTML
 │   └── export/
 │       ├── json.go
 │       └── csv.go
-├── docs/
+├── agent_docs/
 │   ├── ERD.md
 │   └── SPEC.md               # This file
 ├── go.mod
@@ -147,7 +155,7 @@ nmap-tracker/
 ### Key Libraries (Suggested)
 - `github.com/mattn/go-sqlite3` or `modernc.org/sqlite` (pure Go, easier cross-compile)
 - `github.com/go-chi/chi/v5` - routing
-- `github.com/a-h/templ` - type-safe templates (or standard html/template)
+- `github.com/a-h/templ` - type-safe templates
 - XML parsing via stdlib `encoding/xml`
 - IP/CIDR handling via stdlib `net` or `netip`
 
@@ -157,8 +165,7 @@ nmap-tracker/
 - Schema defined in `internal/db/migrations/`
 
 ### Web UI
-- Server-rendered HTML preferred (simpler, lighter)
-- htmx for dynamic updates without full SPA complexity
+- Server-rendered HTML via `templ`
 - Minimal JS, progressive enhancement
 - Mobile-responsive (used on laptops in the field)
 
@@ -176,7 +183,7 @@ nmap-tracker/
 # Start the web server
 nmap-tracker serve [--port 8080] [--db ./nmap-tracker.db]
 
-# Import scan (can also be done via web UI)
+# Import scan (XML only)
 nmap-tracker import --project "Client ABC" scan-results.xml
 
 # Export project
@@ -211,9 +218,10 @@ go test ./...
 
 ## Implementation Notes
 - SQLite driver: Use `modernc.org/sqlite` for a pure Go, cross-compile-friendly build; only switch to `mattn/go-sqlite3` if we later accept CGO for performance reasons.
-- UI approach: Server-rendered HTML with `templ` plus htmx for progressive enhancements; no SPA.
-- Work status scope: Work status is stored on all ports, but UI/handlers only expose state transitions for ports with `state=open`; closed/filtered ports stay at the default `scanned` status and are excluded from workflow toggles.
+- UI approach: Server-rendered HTML with `templ`; no SPA.
+- Work status scope: Work status is stored on all ports, but UI/handlers only expose state transitions for ports with `state=open`; closed/filtered ports stay at their existing status (default `scanned`).
 - Additive imports: Imports never delete ports; rely on `last_seen` to surface “not seen recently” without removal.
+- Scope defaults: CLI import builds a matcher with `includeAllByDefault=true`, so in the absence of scope definitions all hosts are treated as in scope.
 
 ## Future Considerations (Stretch Goals)
 

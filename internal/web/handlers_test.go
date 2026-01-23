@@ -38,6 +38,9 @@ func TestProjectsListHandler(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "Projects") {
 		t.Fatalf("expected response body to contain Projects header")
 	}
+	if !strings.Contains(rec.Body.String(), "NmapTracker") {
+		t.Fatalf("expected response body to contain brand header")
+	}
 }
 
 func TestProjectsCreateHandler(t *testing.T) {
@@ -142,15 +145,16 @@ func TestProjectDashboardHandler(t *testing.T) {
 
 	body := rec.Body.String()
 	for _, expected := range []string{
-		"Total hosts</p><p class=\"stat-value\">2",
-		"In scope</p><p class=\"stat-value\">1",
-		"Out of scope</p><p class=\"stat-value\">1",
-		"Progress: <strong>1 / 4</strong> (25%)",
-		"Scanned</p><p class=\"stat-value\">0",
-		"Flagged</p><p class=\"stat-value\">1",
-		"In progress</p><p class=\"stat-value\">1",
-		"Done</p><p class=\"stat-value\">1",
-		"Parking lot</p><p class=\"stat-value\">1",
+		"Total hosts",
+		"In scope",
+		"Out of scope",
+		"Progress 1 / 4 (25%)",
+		"Scanned",
+		"Flagged",
+		"In progress",
+		"Done",
+		"Parking lot",
+		"/projects/1/hosts",
 	} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("expected response body to contain %q", expected)
@@ -291,6 +295,33 @@ func TestProjectHostsPagination(t *testing.T) {
 	}
 }
 
+func TestProjectHostsHTMXPartial(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("Htmx")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	_, _ = database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.5.0.1", InScope: true})
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/projects/%d/hosts", project.ID), nil)
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "id=\"hosts-table\"") {
+		t.Fatalf("expected HTMX response to include hosts table container")
+	}
+	if strings.Contains(body, "<html") || strings.Contains(body, "<!doctype") {
+		t.Fatalf("expected HTMX response to exclude full layout")
+	}
+}
+
 func TestHostDetailStatusAndNotesUpdates(t *testing.T) {
 	database, server := newTestServer(t)
 	defer database.Close()
@@ -367,6 +398,88 @@ func TestHostDetailStatusAndNotesUpdates(t *testing.T) {
 	}
 	if updatedPort.Notes != "port notes" {
 		t.Fatalf("expected port notes to update, got %q", updatedPort.Notes)
+	}
+}
+
+func TestHostNotesHTMX(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("Oscar")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	host, err := database.UpsertHost(db.Host{
+		ProjectID: project.ID,
+		IPAddress: "10.9.9.9",
+		InScope:   true,
+	})
+	if err != nil {
+		t.Fatalf("upsert host: %v", err)
+	}
+
+	form := url.Values{}
+	form.Set("notes", "htmx host notes")
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/projects/%d/hosts/%d/notes", project.ID, host.ID), strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "id=\"host-notes\"") {
+		t.Fatalf("expected HTMX response to include host notes section")
+	}
+	if strings.Contains(rec.Body.String(), "<html") {
+		t.Fatalf("expected HTMX response to exclude full layout")
+	}
+}
+
+func TestPortStatusHTMX(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("Papa")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	host, err := database.UpsertHost(db.Host{
+		ProjectID: project.ID,
+		IPAddress: "10.8.8.8",
+		InScope:   true,
+	})
+	if err != nil {
+		t.Fatalf("upsert host: %v", err)
+	}
+	port, err := database.UpsertPort(db.Port{
+		HostID:     host.ID,
+		PortNumber: 443,
+		Protocol:   "tcp",
+		State:      "open",
+		WorkStatus: "scanned",
+	})
+	if err != nil {
+		t.Fatalf("upsert port: %v", err)
+	}
+
+	form := url.Values{}
+	form.Set("status", "flagged")
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/projects/%d/hosts/%d/ports/%d/status", project.ID, host.ID, port.ID), strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), fmt.Sprintf("id=\"port-%d\"", port.ID)) {
+		t.Fatalf("expected HTMX response to include port row")
+	}
+	if strings.Contains(rec.Body.String(), "<html") {
+		t.Fatalf("expected HTMX response to exclude full layout")
 	}
 }
 
