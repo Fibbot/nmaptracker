@@ -1,0 +1,90 @@
+package web
+
+import (
+	"fmt"
+
+	templapi "github.com/a-h/templ"
+	"github.com/sloppy/nmaptracker/internal/db"
+)
+
+templ DashboardPage(project db.Project, stats db.DashboardStats, totalFlagged, progress int) {
+	@BaseLayout("Project Dashboard") {
+		<section class="surface">
+			<div class="breadcrumb">
+				<a href="/projects">Projects</a>
+				<span>•</span>
+				<span>{ project.Name }</span>
+			</div>
+			<div class="hero">
+				<h1>{ project.Name }</h1>
+				<p>Coverage snapshot for in-scope assets and workflow progress.</p>
+			</div>
+			<div class="section-head">
+				<div class="meta">Exports</div>
+				<div style="display: flex; gap: 10px; flex-wrap: wrap;">
+					<a role="button" class="button-ghost" href={ templapi.SafeURL(fmt.Sprintf("/projects/%d/export?format=json", project.ID)) }>Export JSON</a>
+					<a role="button" class="button-ghost" href={ templapi.SafeURL(fmt.Sprintf("/projects/%d/export?format=csv", project.ID)) }>Export CSV</a>
+				</div>
+			</div>
+		</section>
+
+		<section class="surface" style="margin-top: 24px;">
+			<div class="section-head">
+				<div>
+					<h2>Hosts</h2>
+					<p class="meta">Inventory coverage across the project scope.</p>
+				</div>
+				<a role="button" href={ templapi.SafeURL(fmt.Sprintf("/projects/%d/hosts", project.ID)) }>View hosts</a>
+			</div>
+			<a class="card link-card" href={ templapi.SafeURL(fmt.Sprintf("/projects/%d/hosts", project.ID)) }>
+				<div class="stats-row">
+					<div class="stat">
+						<p class="stat-label">Total hosts</p>
+						<div class="stat-value">{ fmt.Sprintf("%d", stats.TotalHosts) }</div>
+					</div>
+					<div class="stat">
+						<p class="stat-label">In scope</p>
+						<div class="stat-value">{ fmt.Sprintf("%d", stats.InScopeHosts) }</div>
+					</div>
+					<div class="stat">
+						<p class="stat-label">Out of scope</p>
+						<div class="stat-value">{ fmt.Sprintf("%d", stats.OutScopeHosts) }</div>
+					</div>
+				</div>
+				<p class="meta">Tap to review the full host list and filters.</p>
+			</a>
+		</section>
+
+		<section class="surface" style="margin-top: 24px;">
+			<div class="section-head">
+				<div>
+					<h2>Workflow</h2>
+					<p class="meta">Track progress across discovered services.</p>
+				</div>
+				<div class="meta">Progress { fmt.Sprintf("%d / %d (%d%%)", stats.WorkStatus.Done, totalFlagged, progress) }</div>
+			</div>
+			<div class="stats-row" style="margin-top: 16px;">
+				<div class="stat">
+					<p class="stat-label">Scanned</p>
+					<div class="stat-value">{ fmt.Sprintf("%d", stats.WorkStatus.Scanned) }</div>
+				</div>
+				<div class="stat">
+					<p class="stat-label">Flagged</p>
+					<div class="stat-value">{ fmt.Sprintf("%d", stats.WorkStatus.Flagged) }</div>
+				</div>
+				<div class="stat">
+					<p class="stat-label">In progress</p>
+					<div class="stat-value">{ fmt.Sprintf("%d", stats.WorkStatus.InProgress) }</div>
+				</div>
+				<div class="stat">
+					<p class="stat-label">Done</p>
+					<div class="stat-value">{ fmt.Sprintf("%d", stats.WorkStatus.Done) }</div>
+				</div>
+				<div class="stat">
+					<p class="stat-label">Parking lot</p>
+					<div class="stat-value">{ fmt.Sprintf("%d", stats.WorkStatus.ParkingLot) }</div>
+				</div>
+			</div>
+		</section>
+	}
+}

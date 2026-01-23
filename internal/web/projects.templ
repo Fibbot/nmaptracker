@@ -1,0 +1,52 @@
+package web
+
+import (
+	"fmt"
+
+	templapi "github.com/a-h/templ"
+	"github.com/sloppy/nmaptracker/internal/db"
+)
+
+templ ProjectsListPage(projects []db.Project) {
+	@BaseLayout("Projects") {
+		<section class="surface">
+			<div class="hero">
+				<h1>Projects</h1>
+				<p>Create a workspace for scan imports, host inventory, and workflow tracking. Keep everything scoped and moving.</p>
+			</div>
+			<form method="post" action="/projects">
+				<label for="project-name">Project name</label>
+				<div class="form-row">
+					<input id="project-name" name="name" placeholder="Acme Internal" required />
+					<button class="primary" type="submit">Create project</button>
+				</div>
+			</form>
+		</section>
+		<section class="surface" style="margin-top: 24px;">
+			<div class="hero">
+				<h2>Existing projects</h2>
+				<p>Jump back into active engagements or clean up completed workspaces.</p>
+			</div>
+			if len(projects) == 0 {
+				<p class="meta">No projects yet. Add one to get started.</p>
+			} else {
+				<div class="grid">
+					for _, project := range projects {
+						<article class="card">
+							<div>
+								<h3>{ project.Name }</h3>
+								<p class="meta">Project ID { fmt.Sprintf("%d", project.ID) }</p>
+							</div>
+							<div style="display: flex; gap: 10px; flex-wrap: wrap;">
+								<a role="button" href={ templapi.SafeURL(fmt.Sprintf("/projects/%d", project.ID)) }>Open</a>
+								<form method="post" action={ templapi.SafeURL(fmt.Sprintf("/projects/%d/delete", project.ID)) }>
+									<button class="button-ghost" type="submit">Delete</button>
+								</form>
+							</div>
+						</article>
+					}
+				</div>
+			}
+		</section>
+	}
+}

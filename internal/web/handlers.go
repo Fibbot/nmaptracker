@@ -22,7 +22,7 @@ func (s *Server) handleProjectsList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to list projects", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, projectsListPage(projects))
+	render(w, r, ProjectsListPage(projects))
 }
 
 func (s *Server) handleProjectDashboard(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +51,7 @@ func (s *Server) handleProjectDashboard(w http.ResponseWriter, r *http.Request) 
 	totalFlagged := stats.WorkStatus.Flagged + stats.WorkStatus.InProgress + stats.WorkStatus.Done + stats.WorkStatus.ParkingLot
 	progress := progressPercent(stats.WorkStatus.Done, totalFlagged)
 
-	render(w, r, dashboardPage(project, stats, totalFlagged, progress))
+	render(w, r, DashboardPage(project, stats, totalFlagged, progress))
 }
 
 func (s *Server) handleProjectHosts(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +122,11 @@ func (s *Server) handleProjectHosts(w http.ResponseWriter, r *http.Request) {
 	filters.Dir = dir
 	filters.Page = strconv.Itoa(page)
 	filters.Size = strconv.Itoa(pageSize)
-	render(w, r, hostListPage(project, filters, items, total))
+	if isHTMXRequest(r) {
+		render(w, r, HostsTablePartial(project, filters, items, total))
+		return
+	}
+	render(w, r, HostsPage(project, filters, items, total))
 }
 
 func (s *Server) handleHostDetail(w http.ResponseWriter, r *http.Request) {
@@ -174,7 +178,7 @@ func (s *Server) handleHostDetail(w http.ResponseWriter, r *http.Request) {
 		ports = filtered
 	}
 
-	render(w, r, hostDetailPage(project, host, ports, stateFilters))
+	render(w, r, HostDetailPage(project, host, ports, stateFilters))
 }
 
 func (s *Server) handleHostNotesUpdate(w http.ResponseWriter, r *http.Request) {
@@ -203,6 +207,19 @@ func (s *Server) handleHostNotesUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to update host notes", http.StatusInternalServerError)
 		return
 	}
+	if isHTMXRequest(r) {
+		updatedHost, found, err := s.DB.GetHostByID(hostID)
+		if err != nil {
+			http.Error(w, "failed to load host", http.StatusInternalServerError)
+			return
+		}
+		if !found || updatedHost.ProjectID != projectID {
+			http.Error(w, "host not found", http.StatusNotFound)
+			return
+		}
+		render(w, r, HostNotesSection(projectID, updatedHost))
+		return
+	}
 	http.Redirect(w, r, fmt.Sprintf("/projects/%d/hosts/%d", projectID, hostID), http.StatusSeeOther)
 }
 
@@ -226,11 +243,6 @@ func (s *Server) handlePortStatusUpdate(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "port not found", http.StatusNotFound)
 		return
 	}
-	if port.State != "open" {
-		http.Error(w, "cannot update status for non-open ports", http.StatusBadRequest)
-		return
-	}
-
 	status := strings.TrimSpace(r.FormValue("status"))
 	if !isValidWorkStatus(status) {
 		http.Error(w, "invalid work status", http.StatusBadRequest)
@@ -238,6 +250,19 @@ func (s *Server) handlePortStatusUpdate(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := s.DB.UpdateWorkStatus(portID, status); err != nil {
 		http.Error(w, "failed to update status", http.StatusInternalServerError)
+		return
+	}
+	if isHTMXRequest(r) {
+		updatedPort, found, err := s.DB.GetPortByID(portID)
+		if err != nil {
+			http.Error(w, "failed to load port", http.StatusInternalServerError)
+			return
+		}
+		if !found || updatedPort.HostID != hostID {
+			http.Error(w, "port not found", http.StatusNotFound)
+			return
+		}
+		render(w, r, PortRow(projectID, hostID, updatedPort))
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/projects/%d/hosts/%d#port-%d", projectID, hostID, portID), http.StatusSeeOther)
@@ -267,6 +292,19 @@ func (s *Server) handlePortNotesUpdate(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.DB.UpdatePortNotes(portID, notes); err != nil {
 		http.Error(w, "failed to update port notes", http.StatusInternalServerError)
+		return
+	}
+	if isHTMXRequest(r) {
+		updatedPort, found, err := s.DB.GetPortByID(portID)
+		if err != nil {
+			http.Error(w, "failed to load port", http.StatusInternalServerError)
+			return
+		}
+		if !found || updatedPort.HostID != hostID {
+			http.Error(w, "port not found", http.StatusNotFound)
+			return
+		}
+		render(w, r, PortRow(projectID, hostID, updatedPort))
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/projects/%d/hosts/%d#port-%d", projectID, hostID, portID), http.StatusSeeOther)
@@ -514,6 +552,16 @@ type hostListFilters struct {
 	Size    string
 }
 
+type hostPager struct {
+	Page     int
+	LastPage int
+	PrevURL  string
+	NextURL  string
+	HasPrev  bool
+	HasNext  bool
+	Show     bool
+}
+
 func parseInScope(raw string) (*bool, error) {
 	if raw == "" {
 		return nil, nil
@@ -528,6 +576,10 @@ func parseInScope(raw string) (*bool, error) {
 	default:
 		return nil, fmt.Errorf("invalid in_scope")
 	}
+}
+
+func isHTMXRequest(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("HX-Request"), "true")
 }
 
 func parseStatusFilters(raw string) []string {
@@ -600,6 +652,36 @@ func parsePagination(pageRaw, sizeRaw string) (int, int) {
 		size = val
 	}
 	return page, size
+}
+
+func buildHostPager(projectID int64, filters hostListFilters, total int) hostPager {
+	if total <= 0 {
+		return hostPager{}
+	}
+	page := parseInt(filters.Page, 1)
+	size := parseInt(filters.Size, 50)
+	lastPage := (total + size - 1) / size
+	if lastPage < 1 {
+		lastPage = 1
+	}
+	if page > lastPage {
+		page = lastPage
+	}
+
+	pager := hostPager{
+		Page:     page,
+		LastPage: lastPage,
+		Show:     true,
+	}
+	if page > 1 {
+		pager.HasPrev = true
+		pager.PrevURL = buildHostListLink(projectID, filters, page-1)
+	}
+	if page < lastPage {
+		pager.HasNext = true
+		pager.NextURL = buildHostListLink(projectID, filters, page+1)
+	}
+	return pager
 }
 
 func projectHostIDs(r *http.Request) (int64, int64, error) {

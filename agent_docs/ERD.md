@@ -111,6 +111,7 @@ This document describes the data model for the nmap scan tracking application. T
 - `exclude` - IP/range/CIDR is explicitly out of scope (takes precedence)
 
 ### port.state (nmap states)
+Stored as reported by nmap; commonly:
 - `open` - Port is accepting connections
 - `closed` - Port is accessible but no service listening
 - `filtered` - Firewall/filtering preventing determination
