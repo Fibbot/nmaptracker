@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NmapTracker - Project Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="js/app.js"></script>
+    <script src="js/dashboard.js"></script>
+</head>
+
+<body>
+    <nav>
+        <a href="index.html">Projects</a>
+        <a href="#" id="nav-project-name">Project</a>
+    </nav>
+
+    <div class="flex-between">
+        <h1 id="project-title">Project Dashboard</h1>
+        <div class="flex-row">
+            <a id="view-hosts-btn" class="button" href="#">View Hosts</a>
+            <div id="export-links">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <div id="error-msg" class="error"></div>
+
+    <div class="card">
+        <h2>Statistics</h2>
+        <div class="flex-row" style="gap: 40px; margin-top: 20px;">
+            <div>
+                <h3>Hosts</h3>
+                <table>
+                    <tr>
+                        <td>Total</td>
+                        <td id="stat-total">0</td>
+                    </tr>
+                    <tr>
+                        <td>In Scope</td>
+                        <td id="stat-in-scope">0</td>
+                    </tr>
+                    <tr>
+                        <td>Out of Scope</td>
+                        <td id="stat-out-scope">0</td>
+                    </tr>
+                </table>
+            </div>
+            <div>
+                <h3>Workflow</h3>
+                <table>
+                    <tr>
+                        <td>Scanned</td>
+                        <td id="stat-scanned">0</td>
+                    </tr>
+                    <tr>
+                        <td>Flagged</td>
+                        <td id="stat-flagged">0</td>
+                    </tr>
+                    <tr>
+                        <td>In Progress</td>
+                        <td id="stat-in-progress">0</td>
+                    </tr>
+                    <tr>
+                        <td>Done</td>
+                        <td id="stat-done">0</td>
+                    </tr>
+                    <tr>
+                        <td>Parking Lot</td>
+                        <td id="stat-parking">0</td>
+                    </tr>
+                </table>
+            </div>
+            <div>
+                <h3>Progress</h3>
+                <div style="font-size: 2em; font-weight: bold; margin-top: 10px;" id="progress-percent">0%</div>
+                <div style="color: #666;">of in-scope hosts done</div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

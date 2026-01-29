@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NmapTracker - Host Detail</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="js/app.js"></script>
+    <script src="js/host.js"></script>
+</head>
+
+<body>
+    <nav>
+        <a href="index.html">Projects</a>
+        <a href="#" id="nav-project-name">Project</a>
+        <a href="#" id="nav-hosts-link">Hosts</a>
+        <span id="nav-host-ip">Host</span>
+    </nav>
+
+    <div class="flex-between">
+        <h1 id="host-title">Host Detail</h1>
+        <div id="host-meta" class="flex-row">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+
+    <div id="error-msg" class="error"></div>
+
+    <div class="card">
+        <h3>Host Notes</h3>
+        <textarea id="host-notes" placeholder="Enter notes here..."></textarea>
+        <div style="margin-top: 10px;">
+            <button id="save-notes-btn">Save Notes</button>
+            <span id="notes-status" style="margin-left: 10px; color: green; display: none;">Saved!</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="flex-between">
+            <h3>Ports</h3>
+            <div id="bulk-actions">
+                <button class="secondary" id="bulk-done-btn">Mark All Open as Done</button>
+            </div>
+        </div>
+
+        <div class="flex-row" style="margin: 10px 0;">
+            <label><input type="checkbox" class="port-filter" value="open" checked> Open</label>
+            <label><input type="checkbox" class="port-filter" value="closed"> Closed</label>
+            <label><input type="checkbox" class="port-filter" value="filtered"> Filtered</label>
+
+            <button id="refresh-ports-btn" class="secondary" style="margin-left: auto;">Refresh</button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 100px;">Port</th>
+                    <th style="width: 100px;">State</th>
+                    <th>Service</th>
+                    <th style="width: 150px;">Status</th>
+                    <th>Notes</th>
+                    <th style="width: 80px;">Action</th>
+                </tr>
+            </thead>
+            <tbody id="ports-list">
+                <!-- Populated by JS -->
+            </tbody>
+        </table>
+    </div>
+</body>
+
+</html>

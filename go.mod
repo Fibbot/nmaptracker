@@ -5,7 +5,6 @@ go 1.24.12
 require modernc.org/sqlite v1.44.3
 
 require (
-	github.com/a-h/templ v0.3.977
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-chi/chi/v5 v5.0.10
 	github.com/google/uuid v1.6.0 // indirect
