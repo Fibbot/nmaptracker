@@ -63,11 +63,11 @@ func TestScopeCRUD(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 
-	s1, err := db.AddScopeDefinition(p.ID, "10.0.0.0/24", "include")
+	s1, err := db.AddScopeDefinition(p.ID, "10.0.0.0/24", "cidr")
 	if err != nil {
 		t.Fatalf("add scope1: %v", err)
 	}
-	s2, err := db.AddScopeDefinition(p.ID, "10.0.0.5", "exclude")
+	s2, err := db.AddScopeDefinition(p.ID, "10.0.0.5", "ip")
 	if err != nil {
 		t.Fatalf("add scope2: %v", err)
 	}

@@ -20,9 +20,9 @@ func newTestDB(t *testing.T) *db.DB {
 	return database
 }
 
-func mustMatcher(t *testing.T, defs []scope.Definition, includeAll bool) *scope.Matcher {
+func mustMatcher(t *testing.T, defs []string) *scope.Matcher {
 	t.Helper()
-	m, err := scope.NewMatcher(defs, includeAll)
+	m, err := scope.NewMatcher(defs)
 	if err != nil {
 		t.Fatalf("new matcher: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestImportAdditiveAndEnrichment(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 
-	matcher := mustMatcher(t, []scope.Definition{{Definition: "0.0.0.0/0", Type: "include"}}, false)
+	matcher := mustMatcher(t, []string{"0.0.0.0/0"})
 	now1 := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	obs1 := Observations{
 		Hosts: []HostObservation{
@@ -130,7 +130,7 @@ func TestImportProtocolAware(t *testing.T) {
 	defer database.Close()
 
 	project, _ := database.CreateProject("proto")
-	matcher := mustMatcher(t, []scope.Definition{{Definition: "0.0.0.0/0", Type: "include"}}, false)
+	matcher := mustMatcher(t, []string{"0.0.0.0/0"})
 	now := time.Now().UTC()
 	obs := Observations{
 		Hosts: []HostObservation{
@@ -161,7 +161,7 @@ func TestImportScopeChangeUpdatesHost(t *testing.T) {
 	defer database.Close()
 	project, _ := database.CreateProject("scope")
 
-	matcherInclude := mustMatcher(t, []scope.Definition{{Definition: "10.0.0.0/24", Type: "include"}}, false)
+	matcherInclude := mustMatcher(t, []string{"10.0.0.0/24"})
 	obs := Observations{
 		Hosts: []HostObservation{{IPAddress: "10.0.0.5", Ports: []PortObservation{{PortNumber: 80, Protocol: "tcp", State: "open", Service: "http"}}}},
 	}
@@ -173,16 +173,19 @@ func TestImportScopeChangeUpdatesHost(t *testing.T) {
 		t.Fatalf("expected host to be in scope initially")
 	}
 
-	matcherExclude := mustMatcher(t, []scope.Definition{
-		{Definition: "10.0.0.0/24", Type: "include"},
-		{Definition: "10.0.0.5", Type: "exclude"},
-	}, false)
+	// New logic: simpler, strict allow-list logic.
+	// If we want to simulate exclude, we just don't include it in the allowed list,
+	// assuming we have a way to define allowed list strictly.
+	// In this test, let's just use a different specific subnet that doesn't include 10.0.0.5.
+
+	matcherExclude := mustMatcher(t, []string{"192.168.0.0/16"}) // 10.0.0.5 is NOT in this
+
 	if _, err := ImportObservations(database, matcherExclude, project.ID, "scan2.xml", obs, time.Now().UTC()); err != nil {
 		t.Fatalf("import exclude: %v", err)
 	}
 	host, _, _ = database.GetHostByIP(project.ID, "10.0.0.5")
 	if host.InScope {
-		t.Fatalf("expected host to be marked out-of-scope after exclusion")
+		t.Fatalf("expected host to be marked out-of-scope after scope change")
 	}
 }
 
@@ -195,7 +198,7 @@ func TestImportTransactionRollbackOnError(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 
-	matcher := mustMatcher(t, []scope.Definition{{Definition: "0.0.0.0/0", Type: "include"}}, false)
+	matcher := mustMatcher(t, []string{"0.0.0.0/0"})
 	obs := Observations{
 		Hosts: []HostObservation{
 			{IPAddress: "10.10.10.10", Ports: []PortObservation{{PortNumber: 80, Protocol: "tcp", State: "open"}}},

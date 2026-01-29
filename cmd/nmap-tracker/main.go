@@ -180,7 +180,7 @@ func runImport(args []string, out, errOut io.Writer) int {
 		return 1
 	}
 
-	matcher, err := scope.NewMatcher(nil, true)
+	matcher, err := scope.NewMatcher(nil)
 	if err != nil {
 		fmt.Fprintf(errOut, "scope matcher: %v\n", err)
 		return 1

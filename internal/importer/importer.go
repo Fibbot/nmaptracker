@@ -3,6 +3,7 @@ package importer
 import (
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -55,35 +56,53 @@ func ParseXML(r io.Reader) (Observations, error) {
 // It is additive: ports are never deleted; service/version/product/extrainfo
 // fields are enriched when the new scan provides non-empty values. work_status
 // is preserved for existing ports. last_seen is updated to the provided time.
-func ImportObservations(database *db.DB, matcher *scope.Matcher, projectID int64, filename string, obs Observations, now time.Time) (db.ScanImport, error) {
+// ImportStats holds results of an import operation.
+type ImportStats struct {
+	db.ScanImport
+	InScope  int
+	OutScope int
+}
+
+// ImportObservations merges parsed observations into the DB for a project.
+func ImportObservations(database *db.DB, matcher *scope.Matcher, projectID int64, filename string, obs Observations, now time.Time) (ImportStats, error) {
 	tx, err := database.Begin()
 	if err != nil {
-		return db.ScanImport{}, err
+		return ImportStats{}, err
 	}
 	defer tx.Rollback()
 
-	stats := db.ScanImport{
-		ProjectID:  projectID,
-		Filename:   filename,
-		HostsFound: len(obs.Hosts),
+	stats := ImportStats{
+		ScanImport: db.ScanImport{
+			ProjectID:  projectID,
+			Filename:   filename,
+			HostsFound: len(obs.Hosts),
+		},
 	}
 	for _, h := range obs.Hosts {
 		stats.PortsFound += len(h.Ports)
 	}
-	record, err := tx.InsertScanImport(stats)
+	record, err := tx.InsertScanImport(stats.ScanImport)
 	if err != nil {
-		return db.ScanImport{}, err
+		return ImportStats{}, err
 	}
+	stats.ScanImport = record // Update with ID and timestamps
 
 	for _, hObs := range obs.Hosts {
-		inScope, err := matcher.InScope(hObs.IPAddress)
-		if err != nil {
-			return db.ScanImport{}, fmt.Errorf("scope check %s: %w", hObs.IPAddress, err)
+		// Validate IP
+		if _, err := netip.ParseAddr(hObs.IPAddress); err != nil {
+			return ImportStats{}, fmt.Errorf("invalid ip %q: %w", hObs.IPAddress, err)
+		}
+
+		inScope := matcher.InScope(hObs.IPAddress)
+		if inScope {
+			stats.InScope++
+		} else {
+			stats.OutScope++
 		}
 
 		existingHost, _, err := tx.GetHostByIP(projectID, hObs.IPAddress)
 		if err != nil {
-			return db.ScanImport{}, err
+			return ImportStats{}, err
 		}
 
 		host := db.Host{
@@ -96,13 +115,13 @@ func ImportObservations(database *db.DB, matcher *scope.Matcher, projectID int64
 		}
 		upsertedHost, err := tx.UpsertHost(host)
 		if err != nil {
-			return db.ScanImport{}, err
+			return ImportStats{}, err
 		}
 
 		for _, pObs := range hObs.Ports {
 			existingPort, _, err := tx.GetPortByKey(upsertedHost.ID, pObs.PortNumber, pObs.Protocol)
 			if err != nil {
-				return db.ScanImport{}, err
+				return ImportStats{}, err
 			}
 			workStatus := existingPort.WorkStatus
 			if workStatus == "" {
@@ -123,14 +142,14 @@ func ImportObservations(database *db.DB, matcher *scope.Matcher, projectID int64
 				LastSeen:     now,
 			}
 			if _, err := tx.UpsertPort(port); err != nil {
-				return db.ScanImport{}, err
+				return ImportStats{}, err
 			}
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return db.ScanImport{}, err
+		return ImportStats{}, err
 	}
-	return record, nil
+	return stats, nil
 }
 
 func pickNonEmpty(primary, fallback string) string {
