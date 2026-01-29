@@ -15,6 +15,14 @@ Nmap Tracker is a lightweight, self-hosted tool for managing and visualizing Nma
 3.  **Import Scan**: `./nmap-tracker import scan.xml --project internal-audit`
 4.  **Export**: `./nmap-tracker export --project internal-audit --output internal-audit.json`
 
+## Build without Make
+
+If you don't have Make installed, you can build directly with Go:
+
+```bash
+go build ./cmd/nmap-tracker
+```
+
 ## Features
 
 *   **Import Parsing**: Ingests standard Nmap XML output (`-oX`).
