@@ -5,71 +5,100 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NmapTracker - Hosts</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <script src="js/app.js"></script>
     <script src="js/hosts.js"></script>
 </head>
 
 <body>
-    <nav>
-        <a href="index.html">Projects</a>
-        <a href="#" id="nav-project-name">Project</a>
-        <span>Hosts</span>
-    </nav>
+    <div class="container">
+        <div class="breadcrumb">
+            <a href="index.html">Projects</a>
+            <span class="separator">/</span>
+            <a href="#" id="nav-project-name">Project</a>
+            <span class="separator">/</span>
+            <span class="current">Hosts</span>
+        </div>
 
-    <h1>Hosts</h1>
-    <div id="error-msg" class="error"></div>
+        <div class="page-header">
+            <h1 class="page-title">Hosts</h1>
+        </div>
 
-    <div class="card">
-        <form id="filter-form" class="flex-row" style="flex-wrap: wrap;">
-            <input type="text" name="subnet" placeholder="Subnet (CIDR)" style="width: 150px;">
-            <select name="status">
-                <option value="">All Statuses</option>
-                <option value="scanned">Scanned</option>
-                <option value="flagged">Flagged</option>
-                <option value="in_progress">In Progress</option>
-                <option value="done">Done</option>
-                <option value="parking_lot">Parking Lot</option>
-            </select>
-            <select name="in_scope">
-                <option value="">All Scopes</option>
-                <option value="true">In Scope</option>
-                <option value="false">Out of Scope</option>
-            </select>
-            <select name="sort">
-                <option value="ip">Sort by IP</option>
-                <option value="hostname">Sort by Hostname</option>
-                <option value="port_count">Sort by Port Count</option>
-            </select>
-            <select name="dir">
-                <option value="asc">Ascending</option>
-                <option value="desc">Descending</option>
-            </select>
-            <button type="submit">Filter</button>
-            <button type="button" class="secondary" id="reset-btn">Reset</button>
+        <div id="error-msg" class="error"></div>
+
+        <form id="filter-form" class="filter-bar">
+            <!-- Subnet Filter -->
+            <div class="flex-row" style="flex: 1; min-width: 200px;">
+                <label style="margin-bottom:0; margin-right: 8px;">Subnet</label>
+                <input type="text" name="subnet" placeholder="CIDR (e.g. 192.168.1.0/24)" style="width: 100%;">
+            </div>
+
+            <!-- Status Filter -->
+            <div class="flex-row">
+                <label style="margin-bottom:0; margin-right: 8px;">Status</label>
+                <select name="status">
+                    <option value="">All Statuses</option>
+                    <option value="scanned">Scanned</option>
+                    <option value="flagged">Flagged</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="done">Done</option>
+                    <option value="parking_lot">Parking Lot</option>
+                </select>
+            </div>
+
+            <!-- Scope Filter -->
+            <div class="flex-row">
+                <label style="margin-bottom:0; margin-right: 8px;">Scope</label>
+                <select name="in_scope">
+                    <option value="">All Scopes</option>
+                    <option value="true">In Scope</option>
+                    <option value="false">Out of Scope</option>
+                </select>
+            </div>
+
+            <!-- Sort Filter (Hidden default input for API compatibility if we keep server sorting logic details) -->
+            <!-- We will let the table be client sortable but the initial API fetch uses these defaults -->
+            <input type="hidden" name="sort" value="ip">
+            <input type="hidden" name="dir" value="asc">
+
+            <button type="submit" class="btn btn-primary">Filter</button>
+            <button type="button" class="btn btn-secondary" id="reset-btn">Reset</button>
         </form>
-    </div>
 
-    <table>
-        <thead>
-            <tr>
-                <th>IP Address</th>
-                <th>Hostname</th>
-                <th>In Scope</th>
-                <th>Ports</th>
-                <th>Status Summary</th>
-            </tr>
-        </thead>
-        <tbody id="hosts-list">
-            <!-- Populated by JS -->
-        </tbody>
-    </table>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="sortable">IP Address</th>
+                        <th class="sortable">Hostname</th>
+                        <th class="sortable" style="width: 100px;">In Scope</th>
+                        <th class="sortable" style="width: 80px;">Ports</th>
+                        <th style="width: 250px;">Status Summary</th>
+                    </tr>
+                </thead>
+                <tbody id="hosts-list">
+                    <!-- Populated by JS -->
+                </tbody>
+            </table>
+        </div>
 
-    <div class="flex-row" style="justify-content: center; gap: 20px;">
-        <button id="prev-btn" class="secondary" disabled>Previous</button>
-        <span id="page-info">Page 1</span>
-        <button id="next-btn" class="secondary" disabled>Next</button>
+        <div class="pagination">
+            <button id="prev-btn" class="pagination-btn" disabled>Previous</button>
+            <span id="page-info" class="pagination-info">Page 1</span>
+            <button id="next-btn" class="pagination-btn" disabled>Next</button>
+        </div>
     </div>
+    <script>
+        // Init client sorting on load
+        document.addEventListener('DOMContentLoaded', () => {
+            makeSortable(document.querySelector('table'));
+        });
+    </script>
 </body>
 
 </html>
