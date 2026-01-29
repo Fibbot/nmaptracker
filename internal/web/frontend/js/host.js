@@ -25,8 +25,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const meta = document.getElementById('host-meta');
         meta.innerHTML = `
-            <span class="badge ${host.InScope ? 'badge-open' : 'badge-closed'}">${host.InScope ? 'In Scope' : 'Out of Scope'}</span>
-            <span style="color: #666;">${host.OSGuess || 'OS Unknown'}</span>
+            <span class="badge ${host.InScope ? 'badge-yes' : 'badge-no'}">${host.InScope ? 'In Scope' : 'Out of Scope'}</span>
+            <span style="color: var(--text-muted); margin-left: 10px;">${host.OSGuess || 'OS Unknown'}</span>
         `;
 
         document.getElementById('host-notes').value = host.Notes || '';
@@ -39,9 +39,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     method: 'PUT',
                     body: JSON.stringify({ notes })
                 });
-                showSaveStatus('notes-status');
+                showToast('Host notes saved', 'success');
             } catch (err) {
-                alert('Error saving notes: ' + err.message);
+                showToast(err.message, 'error');
             }
         });
 
@@ -53,9 +53,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     method: 'POST',
                     body: JSON.stringify({ status: 'done' })
                 });
+                showToast('All open ports marked as DONE', 'success');
                 loadPorts(projectId, hostId);
             } catch (err) {
-                alert('Error: ' + err.message);
+                showToast(err.message, 'error');
             }
         });
 
@@ -64,7 +65,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             cb.addEventListener('change', () => loadPorts(projectId, hostId));
         });
 
-        document.getElementById('refresh-ports-btn').addEventListener('click', () => loadPorts(projectId, hostId));
+        document.getElementById('refresh-ports-btn').addEventListener('click', () => {
+            loadPorts(projectId, hostId);
+            showToast('Ports refreshed', 'info');
+        });
 
         // Load Ports
         loadPorts(projectId, hostId);
@@ -106,15 +110,16 @@ function renderPorts(ports, projectId, hostId) {
             <td>${p.PortNumber}/${p.Protocol}</td>
             <td><span class="badge badge-${p.State}">${p.State}</span></td>
             <td>
-                <div><b>${p.Service}</b></div>
-                <div style="font-size: 0.85em; color: #666;">${p.Product || ''} ${p.Version || ''}</div>
-                ${p.ScriptOutput ? `<details><summary>Script Output</summary><pre style="font-size: 0.8em; overflow: auto; max-width: 400px; max-height: 200px;">${p.ScriptOutput}</pre></details>` : ''}
+                <div style="font-weight: 500">${p.Service}</div>
+                <div style="font-size: 12px; color: var(--text-dim);">${p.Product || ''} ${p.Version || ''}</div>
+                ${p.ScriptOutput ? `<details style="margin-top:4px;"><summary style="cursor:pointer;color:var(--accent);">Script Output</summary><pre style="font-size: 11px; background:var(--bg-base); padding:8px; border-radius:4px; overflow: auto; max-width: 400px; max-height: 200px;">${p.ScriptOutput}</pre></details>` : ''}
             </td>
         `;
 
         // Status Select
         const tdStatus = document.createElement('td');
         const select = document.createElement('select');
+        select.style.width = '100%';
         ['scanned', 'flagged', 'in_progress', 'done', 'parking_lot'].forEach(s => {
             const opt = document.createElement('option');
             opt.value = s;
@@ -130,6 +135,7 @@ function renderPorts(ports, projectId, hostId) {
         const textarea = document.createElement('textarea');
         textarea.value = p.Notes || '';
         textarea.style.height = '60px';
+        textarea.placeholder = "Notes...";
         tdNotes.appendChild(textarea);
         tr.appendChild(tdNotes);
 
@@ -137,7 +143,10 @@ function renderPorts(ports, projectId, hostId) {
         const tdAction = document.createElement('td');
         const saveBtn = document.createElement('button');
         saveBtn.textContent = 'Save';
+        saveBtn.className = 'btn btn-primary';
+        saveBtn.style.padding = '6px 12px';
         saveBtn.style.width = '100%';
+        saveBtn.style.fontSize = '12px';
         tdAction.appendChild(saveBtn);
         tr.appendChild(tdAction);
 
@@ -157,30 +166,18 @@ function renderPorts(ports, projectId, hostId) {
                     });
                 }
 
-                // Update Notes - Always send if clicked save, or check if changed. Simple to just send.
+                // Update Notes
                 await api(`/projects/${projectId}/hosts/${hostId}/ports/${p.ID}/notes`, {
                     method: 'PUT',
                     body: JSON.stringify({ notes: newNotes })
                 });
 
-                // Flash success (maybe change button text temporarily)
-                const originalText = saveBtn.textContent;
-                saveBtn.textContent = 'Saved!';
-                saveBtn.style.backgroundColor = '#28a745';
-                setTimeout(() => {
-                    saveBtn.textContent = originalText;
-                    saveBtn.style.backgroundColor = '';
-                }, 1000);
+                showToast('Port saved', 'success');
+                // Could re-fetch to be safe, or just update local state if we had it.
 
             } catch (err) {
-                alert('Error saving port: ' + err.message);
+                showToast(err.message, 'error');
             }
         });
     });
-}
-
-function showSaveStatus(id) {
-    const el = document.getElementById(id);
-    el.style.display = 'inline';
-    setTimeout(() => el.style.display = 'none', 2000);
 }

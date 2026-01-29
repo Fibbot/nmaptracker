@@ -36,6 +36,11 @@ document.addEventListener('DOMContentLoaded', () => {
             showError(err.message);
         }
     });
+
+    // Make table sortable on init (empty table)
+    // Actually we should do it after load or just init listeners once?
+    // Listeners are attached to TH. So once is fine.
+    makeSortable(document.querySelector('table'));
 });
 
 async function loadProjects() {
@@ -60,10 +65,16 @@ async function loadProjects() {
             tdDate.textContent = new Date(p.CreatedAt).toLocaleString();
 
             const tdActions = document.createElement('td');
-            const delBtn = document.createElement('button');
+            const delBtn = document.createElement('a'); // Changed to link style or button with class
+            delBtn.href = "#";
             delBtn.textContent = 'Delete';
-            delBtn.className = 'danger';
-            delBtn.onclick = () => deleteProject(p.ID, p.Name);
+            delBtn.className = 'btn btn-danger';
+            delBtn.style.padding = '4px 8px';
+            delBtn.style.fontSize = '12px';
+            delBtn.onclick = (e) => {
+                e.preventDefault();
+                deleteProject(p.ID, p.Name);
+            };
             tdActions.appendChild(delBtn);
 
             tr.appendChild(tdId);

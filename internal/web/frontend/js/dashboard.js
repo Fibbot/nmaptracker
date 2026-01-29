@@ -19,33 +19,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Links
         document.getElementById('view-hosts-btn').href = `hosts.html?id=${projectId}`;
+        document.getElementById('link-total-hosts').href = `hosts.html?id=${projectId}`;
+        document.getElementById('link-in-scope').href = `hosts.html?id=${projectId}&in_scope=true`;
+        document.getElementById('link-out-scope').href = `hosts.html?id=${projectId}&in_scope=false`;
 
-        // Use standard links for exports that trigger downloads
+        // Export Links
         const exportDiv = document.getElementById('export-links');
         exportDiv.innerHTML = `
-            <a href="/api/projects/${projectId}/export?format=json" target="_blank" class="button secondary">Export JSON</a>
-            <a href="/api/projects/${projectId}/export?format=csv" target="_blank" class="button secondary">Export CSV</a>
+            <a href="/api/projects/${projectId}/export?format=json" target="_blank" class="btn btn-secondary">Export JSON</a>
+            <a href="/api/projects/${projectId}/export?format=csv" target="_blank" class="btn btn-secondary">Export CSV</a>
         `;
-        // Hack: The button class needs to be added to the a tag styles if I want them to look like buttons
-        // For now, I'll just add inline styles or rely on the global button style if I used <button>
-        // But since they are <a> tags, let's just make them look like links or add a class in CSS later.
-        // Actually, style.css has button styles but not a.button styles. Let's just leave them as text links styled slightly.
-        const links = exportDiv.querySelectorAll('a');
-        links.forEach(l => {
-            l.style.marginLeft = '10px';
-            l.style.textDecoration = 'none';
-            l.style.padding = '8px 16px';
-            l.style.background = '#6c757d';
-            l.style.color = 'white';
-            l.style.borderRadius = '4px';
-        });
 
-
-        // Stats
+        // Stats - Hosts
         document.getElementById('stat-total').textContent = stats.TotalHosts;
         document.getElementById('stat-in-scope').textContent = stats.InScopeHosts;
         document.getElementById('stat-out-scope').textContent = stats.OutScopeHosts;
 
+        // Stats - Workflow
         document.getElementById('stat-scanned').textContent = stats.WorkStatus.Scanned;
         document.getElementById('stat-flagged').textContent = stats.WorkStatus.Flagged;
         document.getElementById('stat-in-progress').textContent = stats.WorkStatus.InProgress;
@@ -55,9 +45,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Progress
         if (stats.InScopeHosts > 0) {
             const pct = Math.round((stats.WorkStatus.Done / stats.InScopeHosts) * 100);
-            document.getElementById('progress-percent').textContent = `${pct}%`;
+            const pctStr = `${pct}%`;
+            document.getElementById('progress-percent').textContent = pctStr;
+            document.getElementById('progress-fill').style.width = pctStr;
         } else {
             document.getElementById('progress-percent').textContent = 'N/A';
+            document.getElementById('progress-fill').style.width = '0%';
         }
 
     } catch (err) {

@@ -96,20 +96,24 @@ function renderHosts(hosts, projectId) {
         tdHost.textContent = h.Hostname || '-';
 
         const tdScope = document.createElement('td');
-        tdScope.textContent = h.InScope ? 'Yes' : 'No';
-        if (h.InScope) tdScope.style.color = 'green';
+        const scopeBadge = document.createElement('span');
+        scopeBadge.className = h.InScope ? 'badge badge-yes' : 'badge badge-no';
+        scopeBadge.textContent = h.InScope ? 'YES' : 'NO';
+        tdScope.appendChild(scopeBadge);
 
         const tdPorts = document.createElement('td');
         tdPorts.textContent = h.PortCount;
 
         const tdStatus = document.createElement('td');
-        // Simple summary string
-        const parts = [];
-        if (h.Scanned) parts.push(`Scanned: ${h.Scanned}`);
-        if (h.Flagged) parts.push(`Flagged: ${h.Flagged}`);
-        if (h.InProgress) parts.push(`In Progress: ${h.InProgress}`);
-        if (h.Done) parts.push(`Done: ${h.Done}`);
-        tdStatus.textContent = parts.join(', ') || '-';
+        tdStatus.className = 'status-summary';
+
+        // Compact badges logic
+        if (h.Scanned) tdStatus.innerHTML += `<span class="mini-badge" style="background:rgba(100,116,139,0.2); color:#94a3b8">S:${h.Scanned}</span>`;
+        if (h.Flagged) tdStatus.innerHTML += `<span class="mini-badge" style="background:rgba(245,158,11,0.15); color:#fbbf24">F:${h.Flagged}</span>`;
+        if (h.InProgress) tdStatus.innerHTML += `<span class="mini-badge" style="background:rgba(34,211,238,0.15); color:#22d3ee">IP:${h.InProgress}</span>`;
+        if (h.Done) tdStatus.innerHTML += `<span class="mini-badge" style="background:rgba(34,197,94,0.15); color:#4ade80">D:${h.Done}</span>`;
+        if (h.ParkingLot) tdStatus.innerHTML += `<span class="mini-badge" style="background:rgba(139,92,246,0.15); color:#a78bfa">P:${h.ParkingLot}</span>`;
+        if (!tdStatus.innerHTML) tdStatus.textContent = '-';
 
         tr.appendChild(tdIp);
         tr.appendChild(tdHost);
