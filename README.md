@@ -2,13 +2,18 @@
 
 Nmap Tracker is a lightweight, self-hosted tool for managing and visualizing Nmap scan results. It allows you to import Nmap XML reports, track host and port statuses over time, manage scopes, and collaborate on findings through a unified web interface or CLI.
 
-## TL;DR
+## TL;DR (Web UI - Preferred)
+
+1.  **Build**: `make build`
+2.  **Serve**: `./nmap-tracker serve`
+3.  **View**: Open `http://localhost:8080`
+
+## TL;DR (CLI - If Masochistic)
 
 1.  **Build**: `make build`
 2.  **Create Project**: `./nmap-tracker projects create internal-audit`
 3.  **Import Scan**: `./nmap-tracker import scan.xml --project internal-audit`
-4.  **Serve**: `./nmap-tracker serve`
-5.  **View**: Open `http://localhost:8080`
+4.  **Export**: `./nmap-tracker export --project internal-audit --output internal-audit.json`
 
 ## Features
 
