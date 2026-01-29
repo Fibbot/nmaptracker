@@ -106,3 +106,12 @@ func (db *DB) UpdateHostNotes(id int64, notes string) error {
 	}
 	return nil
 }
+
+// UpdateHostScope updates the in_scope status for a host.
+func (db *DB) UpdateHostScope(id int64, inScope bool) error {
+	_, err := db.Exec(`UPDATE host SET in_scope = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, inScope, id)
+	if err != nil {
+		return fmt.Errorf("update host scope: %w", err)
+	}
+	return nil
+}

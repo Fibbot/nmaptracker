@@ -39,6 +39,15 @@ func NewServer(database *db.DB) *Server {
 		r.Put("/projects/{id}/hosts/{hostID}/ports/{portID}/notes", server.apiUpdatePortNotes)
 		r.Post("/projects/{id}/hosts/{hostID}/bulk-status", server.apiHostBulkStatus)
 
+		// Scope
+		r.Get("/projects/{id}/scope", server.apiListScope)
+		r.Post("/projects/{id}/scope", server.apiAddScope)
+		r.Delete("/projects/{id}/scope/{scopeID}", server.apiDeleteScope)
+		r.Post("/projects/{id}/scope/evaluate", server.apiEvaluateScope)
+
+		// Import
+		r.Post("/projects/{id}/import", server.apiImportXML)
+
 		// Exports (files)
 		r.Get("/projects/{id}/export", server.handleProjectExport)
 		r.Get("/projects/{id}/hosts/{hostID}/export", server.handleHostExport)

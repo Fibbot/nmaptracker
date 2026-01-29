@@ -37,12 +37,15 @@
         <div id="error-msg" class="error"></div>
 
         <div class="card">
-            <div class="card-header">
+            <div class="card-header" style="cursor: pointer;" onclick="toggleHostNotes()">
                 <div class="card-title">Host Notes</div>
+                <span id="host-notes-toggle-icon">▼</span>
             </div>
-            <textarea id="host-notes" placeholder="Enter notes here..."></textarea>
-            <div style="margin-top: 10px;">
-                <button id="save-notes-btn" class="btn btn-primary">Save Notes</button>
+            <div id="host-notes-content" style="display: none;">
+                <textarea id="host-notes" placeholder="Enter notes here..."></textarea>
+                <div style="margin-top: 10px;">
+                    <button id="save-notes-btn" class="btn btn-primary">Save Notes</button>
+                </div>
             </div>
         </div>
 
@@ -95,6 +98,19 @@
             makeSortable(document.querySelector('table'));
         });
     </script>
+    <div id="content-modal" class="modal">
+        <div class="modal-backdrop" onclick="closeModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Script Output</h3>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="copyModalContent()">Copy</button>
+                    <button class="btn-icon" onclick="closeModal()">×</button>
+                </div>
+            </div>
+            <pre id="modal-body" class="modal-body"></pre>
+        </div>
+    </div>
 </body>
 
 </html>

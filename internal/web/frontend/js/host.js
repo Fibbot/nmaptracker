@@ -7,6 +7,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
+    // Modal Close
+    const closeBtn = document.querySelector('.modal .close'); // if exists standard
+    // We bind explicitly in HTML but good to have keyboard support
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModal();
+    });
+
     // Initial Load
     try {
         const [project, host] = await Promise.all([
@@ -112,7 +119,23 @@ function renderPorts(ports, projectId, hostId) {
             <td>
                 <div style="font-weight: 500">${p.Service}</div>
                 <div style="font-size: 12px; color: var(--text-dim);">${p.Product || ''} ${p.Version || ''}</div>
-                ${p.ScriptOutput ? `<details style="margin-top:4px;"><summary style="cursor:pointer;color:var(--accent);">Script Output</summary><pre style="font-size: 11px; background:var(--bg-base); padding:8px; border-radius:4px; overflow: auto; max-width: 400px; max-height: 200px;">${p.ScriptOutput}</pre></details>` : ''}
+                ${p.ScriptOutput ? `
+                <div class="script-output-container">
+                    <div class="script-output-header" onclick="this.closest('.script-output-container').classList.toggle('open');" style="cursor:pointer;">
+                        <div class="flex-row">
+                             <span class="toggle-icon" style="font-size: 10px; color: var(--text-dim); margin-right: 6px;">▶</span>
+                             <span class="script-output-label">Script Output</span>
+                        </div>
+                        <div class="script-output-actions" onclick="event.stopPropagation();">
+                            <button class="btn-icon" onclick="openModal('Script Output', this.closest('.script-output-container').querySelector('.script-output-content').textContent)" title="View Full">⤢</button>
+                            <button class="btn-icon" onclick="navigator.clipboard.writeText(this.closest('.script-output-container').querySelector('.script-output-content').textContent); showToast('Copied', 'success')" title="Copy">📋</button>
+                        </div>
+                    </div>
+                    <div class="script-output-body" style="display:none;">
+                        <pre class="script-output-content">${escapeHtml(p.ScriptOutput)}</pre>
+                    </div>
+                </div>
+                ` : ''}
             </td>
         `;
 
@@ -130,11 +153,11 @@ function renderPorts(ports, projectId, hostId) {
         tdStatus.appendChild(select);
         tr.appendChild(tdStatus);
 
-        // Notes
+        // Notes - Constrained with saved indicator
         const tdNotes = document.createElement('td');
+        tdNotes.className = 'notes-cell'; // for CSS targeting
         const textarea = document.createElement('textarea');
         textarea.value = p.Notes || '';
-        textarea.style.height = '60px';
         textarea.placeholder = "Notes...";
         tdNotes.appendChild(textarea);
         tr.appendChild(tdNotes);
@@ -172,8 +195,12 @@ function renderPorts(ports, projectId, hostId) {
                     body: JSON.stringify({ notes: newNotes })
                 });
 
+                // Reset height visuals
+                textarea.style.height = 'auto';
+                textarea.classList.add('saved');
+                setTimeout(() => textarea.classList.remove('saved'), 100);
+
                 showToast('Port saved', 'success');
-                // Could re-fetch to be safe, or just update local state if we had it.
 
             } catch (err) {
                 showToast(err.message, 'error');
@@ -181,3 +208,38 @@ function renderPorts(ports, projectId, hostId) {
         });
     });
 }
+
+// Global Modal Functions
+function openModal(title, content) {
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-body').textContent = content; // Using textContent safe against XSS if already raw
+    document.getElementById('content-modal').style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('content-modal').style.display = 'none';
+}
+
+function copyModalContent() {
+    const content = document.getElementById('modal-body').textContent;
+    navigator.clipboard.writeText(content).then(() => {
+        showToast('Copied to clipboard', 'success');
+    });
+}
+
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.copyModalContent = copyModalContent;
+
+function toggleHostNotes() {
+    const content = document.getElementById('host-notes-content');
+    const icon = document.getElementById('host-notes-toggle-icon');
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.textContent = '▲';
+    } else {
+        content.style.display = 'none';
+        icon.textContent = '▼';
+    }
+}
+window.toggleHostNotes = toggleHostNotes;
