@@ -6,7 +6,7 @@
 *.exe
 *.test
 *.out
-*.db
+*.db*
 go.work
 go.work.sum
 dist/
