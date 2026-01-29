@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NmapTracker - Project Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <script src="js/app.js"></script>
+    <script src="js/dashboard.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <div class="breadcrumb">
+            <a href="index.html">Projects</a>
+            <span class="separator">/</span>
+            <span class="current" id="nav-project-name">Project</span>
+        </div>
+
+        <div class="page-header">
+            <h1 class="page-title" id="project-title">Project Dashboard</h1>
+            <div class="flex-row">
+                <a id="view-hosts-btn" class="btn btn-primary" href="#">View Hosts</a>
+                <div id="export-links" class="flex-row">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+
+        <div id="error-msg" class="error"></div>
+
+        <!-- Import Scan -->
+        <div class="card" style="margin-top: 24px;">
+            <div class="card-header">
+                <h3 class="card-title">Import Nmap Scan</h3>
+            </div>
+            <div class="import-section">
+                <p class="text-muted">Upload an Nmap XML file to import hosts and ports into this project.</p>
+
+                <div class="import-dropzone" id="import-dropzone">
+                    <input type="file" id="import-file" accept=".xml" style="display: none;">
+                    <button class="dropzone-content btn-secondary" style="background:none; border:none;"
+                        onclick="document.getElementById('import-file').click();">
+                        <span class="dropzone-icon">📄</span>
+                        <p>Drag & drop an XML file here, or <span
+                                style="color:var(--accent); text-decoration:underline;">browse</span></p>
+                    </button>
+                </div>
+
+                <div id="import-status" class="import-status" style="display: none;">
+                    <span id="import-filename"></span>
+                    <button class="btn btn-primary" onclick="uploadFile()">Import</button>
+                    <button class="btn btn-secondary" onclick="clearImport()">Cancel</button>
+                </div>
+
+                <div id="import-progress" class="import-progress" style="display: none;">
+                    <span>Importing...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scope Definition -->
+        <div class="card">
+            <div class="card-header" style="cursor: pointer;" onclick="toggleScope()">
+                <h3 class="card-title">Scope Definition</h3>
+                <span id="scope-toggle-icon">▼</span>
+            </div>
+
+            <div id="scope-content" class="scope-content truncated" style="display:none;">
+                <!-- Input area -->
+                <div class="scope-input-section">
+                    <label for="scope-input">Add IPs or CIDR blocks (one per line)</label>
+                    <textarea id="scope-input" rows="4" placeholder="10.0.0.0/24&#10;192.168.1.50"></textarea>
+                    <div class="scope-actions">
+                        <button class="btn btn-primary" onclick="addScopeRules()">Add to Scope</button>
+                    </div>
+                </div>
+
+                <!-- Current rules -->
+                <div class="scope-rules-section">
+                    <div class="scope-rules-header">
+                        <span class="label">Current Scope Rules</span>
+                        <button class="btn btn-secondary" onclick="reEvaluateScope()">Re-evaluate Hosts</button>
+                    </div>
+                    <ul id="scope-rules-list" class="scope-rules-list">
+                        <!-- Populated by JS -->
+                    </ul>
+                    <p id="scope-empty" class="text-muted" style="display: none;">
+                        No scope rules defined. All hosts will be considered in-scope.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-section">
+            <!-- Hosts Card -->
+            <div class="stats-card">
+                <div class="stats-card-title">Hosts</div>
+                <div class="stats-grid">
+                    <a id="link-total-hosts" href="#" class="stat-item clickable">
+                        <span class="stat-label">Total</span>
+                        <span class="stat-value" id="stat-total">0</span>
+                    </a>
+                    <a id="link-in-scope" href="#" class="stat-item clickable">
+                        <span class="stat-label">In Scope</span>
+                        <span class="stat-value" id="stat-in-scope">0</span>
+                    </a>
+                    <a id="link-out-scope" href="#" class="stat-item clickable">
+                        <span class="stat-label">Out of Scope</span>
+                        <span class="stat-value" id="stat-out-scope">0</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Workflow Card -->
+            <div class="stats-card">
+                <div class="stats-card-title">Workflow</div>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Scanned</span>
+                        <span class="stat-value" id="stat-scanned">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Flagged</span>
+                        <span class="stat-value" id="stat-flagged">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">In Progress</span>
+                        <span class="stat-value" id="stat-in-progress">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Done</span>
+                        <span class="stat-value" id="stat-done">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Parking Lot</span>
+                        <span class="stat-value" id="stat-parking">0</span>
+                    </div>
+                </div>
+
+                <div class="progress-container">
+                    <div class="progress-label">
+                        <span>Completion (In-Scope)</span>
+                        <span id="progress-percent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

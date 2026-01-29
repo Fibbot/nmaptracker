@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NmapTracker - Projects</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <script src="js/app.js"></script>
+    <script src="js/projects.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <div class="breadcrumb">
+            <span class="current">Projects</span>
+        </div>
+
+        <div class="page-header">
+            <h1 class="page-title">Projects</h1>
+            <button id="create-btn" class="btn btn-primary">New Project</button>
+        </div>
+
+        <div id="error-msg" class="error"></div>
+
+        <div class="card" id="create-form" style="display: none;">
+            <div class="card-header">
+                <div class="card-title">Create New Project</div>
+            </div>
+            <div class="flex-row">
+                <input type="text" id="project-name" placeholder="Project Name" style="flex: 1;">
+                <button id="save-project-btn" class="btn btn-primary">Create</button>
+                <button class="btn btn-secondary" id="cancel-project-btn">Cancel</button>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 80px;" class="sortable">ID</th>
+                        <th class="sortable">Name</th>
+                        <th class="sortable">Created</th>
+                        <th style="width: 120px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="projects-list">
+                    <!-- Populated by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script>
+        // Init sorting after load (projects.js loads data then renders, so wait slightly or call after render)
+        // projects.js calls loadProjects() which is async.
+        // We can override loadProjects to add sortable init, or just add a MutationObserver.
+        // Or simpler: projects.js logic needs to call makeSortable
+        // I will update projects.js to call makeSortable after rendering.
+    </script>
+</body>
+
+</html>
