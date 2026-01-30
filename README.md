@@ -4,6 +4,16 @@ Nmap Tracker is a lightweight, self-hosted tool for managing and visualizing Nma
 
 Vibecoded as hell testing out Antigravity.
 
+<details>
+<summary>UI Screens</summary>
+<img width="1512" height="814" alt="ui - 1" src="https://github.com/user-attachments/assets/3a918b3a-34e9-49a6-8ebb-dba069f3ce9d" />
+<p></p>
+<img width="1512" height="539" alt="ui - 2" src="https://github.com/user-attachments/assets/c3e6cd7f-46ad-4c22-80c6-8e2d426e07e6" />
+<p></p>
+<img width="1511" height="810" alt="ui - 3" src="https://github.com/user-attachments/assets/50598b98-4879-4199-bbcb-8354036c06a6" />
+<p></p>
+</details>
+
 ## TL;DR (Web UI - Preferred)
 
 1.  **Build**: `make build`
