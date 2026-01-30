@@ -105,21 +105,36 @@ function renderHosts(hosts, projectId) {
         tdPorts.textContent = h.PortCount;
 
         const tdStatus = document.createElement('td');
-        tdStatus.className = 'status-summary';
+        const divStatus = document.createElement('div');
+        divStatus.className = 'status-summary';
 
         // Compact badges logic
-        if (h.Scanned) tdStatus.innerHTML += `<span class="mini-badge" style="background:rgba(100,116,139,0.2); color:#94a3b8">S:${h.Scanned}</span>`;
-        if (h.Flagged) tdStatus.innerHTML += `<span class="mini-badge" style="background:rgba(245,158,11,0.15); color:#fbbf24">F:${h.Flagged}</span>`;
-        if (h.InProgress) tdStatus.innerHTML += `<span class="mini-badge" style="background:rgba(34,211,238,0.15); color:#22d3ee">IP:${h.InProgress}</span>`;
-        if (h.Done) tdStatus.innerHTML += `<span class="mini-badge" style="background:rgba(34,197,94,0.15); color:#4ade80">D:${h.Done}</span>`;
-        if (h.ParkingLot) tdStatus.innerHTML += `<span class="mini-badge" style="background:rgba(139,92,246,0.15); color:#a78bfa">P:${h.ParkingLot}</span>`;
-        if (!tdStatus.innerHTML) tdStatus.textContent = '-';
+        if (h.Scanned) divStatus.innerHTML += `<span class="mini-badge" style="background:rgba(100,116,139,0.2); color:#94a3b8">S:${h.Scanned}</span>`;
+        if (h.Flagged) divStatus.innerHTML += `<span class="mini-badge" style="background:rgba(245,158,11,0.15); color:#fbbf24">F:${h.Flagged}</span>`;
+        if (h.InProgress) divStatus.innerHTML += `<span class="mini-badge" style="background:rgba(34,211,238,0.15); color:#22d3ee">IP:${h.InProgress}</span>`;
+        if (h.Done) divStatus.innerHTML += `<span class="mini-badge" style="background:rgba(34,197,94,0.15); color:#4ade80">D:${h.Done}</span>`;
+        if (h.ParkingLot) divStatus.innerHTML += `<span class="mini-badge" style="background:rgba(139,92,246,0.15); color:#a78bfa">P:${h.ParkingLot}</span>`;
+
+        if (!divStatus.innerHTML) divStatus.textContent = '-';
+        tdStatus.appendChild(divStatus);
+
+        const tdActions = document.createElement('td');
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '×';
+        delBtn.className = 'delete-btn';
+        delBtn.title = 'Delete Host';
+        delBtn.onclick = (e) => {
+            e.preventDefault();
+            deleteHost(projectId, h.ID, h.IPAddress);
+        };
+        tdActions.appendChild(delBtn);
 
         tr.appendChild(tdIp);
         tr.appendChild(tdHost);
         tr.appendChild(tdScope);
         tr.appendChild(tdPorts);
         tr.appendChild(tdStatus);
+        tr.appendChild(tdActions);
 
         tbody.appendChild(tr);
     });
@@ -129,4 +144,29 @@ function updatePagination() {
     document.getElementById('page-info').textContent = `Page ${currentPage} of ${Math.ceil(currentTotal / PAGE_SIZE) || 1}`;
     document.getElementById('prev-btn').disabled = currentPage <= 1;
     document.getElementById('next-btn').disabled = currentPage * PAGE_SIZE >= currentTotal;
+}
+
+async function deleteHost(projectId, hostId, ip) {
+    if (!confirm(`Are you sure you want to delete host ${ip}?`)) return;
+
+    try {
+        await api(`/projects/${projectId}/hosts/${hostId}`, {
+            method: 'DELETE'
+        });
+        showToast(`Host ${ip} deleted`, 'success');
+        loadHosts();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+function showToast(msg, type = 'info') {
+    // Check if global showToast exists (from app.js??), if not define simple fallback or assume it exists.
+    // dashboard.js uses showToast. app.js likely defines it.
+    // I noticed app.js was present in the dir list.
+    if (window.showToast) {
+        window.showToast(msg, type);
+    } else {
+        alert(msg);
+    }
 }

@@ -177,7 +177,7 @@ function toggleScope() {
 }
 
 // Import Functions
-let selectedFile = null;
+let selectedFiles = [];
 
 function setupImport() {
     const dropzone = document.getElementById('import-dropzone');
@@ -198,72 +198,113 @@ function setupImport() {
 
         const files = e.dataTransfer.files;
         if (files.length > 0) {
-            handleFile(files[0]);
+            handleFiles(files);
         }
     });
 
     fileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
-            handleFile(e.target.files[0]);
+            handleFiles(e.target.files);
         }
     });
 }
 
-function handleFile(file) {
-    if (!file.name.endsWith('.xml')) {
-        showToast('Please select an XML file', 'error');
+function handleFiles(files) {
+    let validFiles = [];
+    for (let i = 0; i < files.length; i++) {
+        if (files[i].name.endsWith('.xml')) {
+            validFiles.push(files[i]);
+        }
+    }
+
+    if (validFiles.length === 0) {
+        showToast('Please select at least one XML file', 'error');
         return;
     }
 
-    selectedFile = file;
-    document.getElementById('import-filename').textContent = file.name;
+    selectedFiles = validFiles;
+
+    // Update UI
+    const fileCount = selectedFiles.length;
+    const countText = fileCount === 1 ? selectedFiles[0].name : `${fileCount} files selected`;
+
+    document.getElementById('import-filename').textContent = countText;
     document.getElementById('import-dropzone').style.display = 'none';
     document.getElementById('import-status').style.display = 'flex';
 }
 
 function clearImport() {
-    selectedFile = null;
+    selectedFiles = [];
     document.getElementById('import-file').value = '';
     document.getElementById('import-dropzone').style.display = 'block';
     document.getElementById('import-status').style.display = 'none';
 }
 
 async function uploadFile() {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
 
     const projectId = getProjectId();
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-
     document.getElementById('import-status').style.display = 'none';
     document.getElementById('import-progress').style.display = 'block';
 
-    try {
-        const response = await fetch(`/api/projects/${projectId}/import`, {
-            method: 'POST',
-            body: formData
-        });
+    let totalHosts = 0;
+    let totalPorts = 0;
+    let errors = [];
 
-        if (!response.ok) {
-            const text = await response.text();
-            throw new Error(text || 'Import failed');
+    for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+
+        // Update progress text
+        const statusText = document.getElementById('import-progress').querySelector('p');
+        if (statusText) {
+            statusText.textContent = `Importing ${i + 1} of ${selectedFiles.length}...`;
         }
 
-        const result = await response.json();
+        const formData = new FormData();
+        formData.append('file', file);
 
-        showToast(
-            `Imported ${result.hosts_imported} hosts, ${result.ports_imported} ports (${result.hosts_in_scope} in scope)`,
-            'success'
-        );
+        try {
+            const response = await fetch(`/api/projects/${projectId}/import`, {
+                method: 'POST',
+                body: formData
+            });
 
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || 'Import failed');
+            }
+
+            const result = await response.json();
+            totalHosts += result.hosts_imported;
+            totalPorts += result.ports_imported;
+
+        } catch (err) {
+            console.error(`Failed to import ${file.name}:`, err);
+            errors.push(`${file.name}: ${err.message}`);
+        }
+    }
+
+    // Finished
+    document.getElementById('import-progress').style.display = 'none';
+
+    if (errors.length > 0) {
+        // Show mixed result or error
+        if (totalHosts > 0) {
+            showToast(`Imported ${totalHosts} hosts, ${totalPorts} ports. Failures: ${errors.join(', ')}`, 'warning');
+        } else {
+            showToast(`Import failed. Errors: ${errors.join(', ')}`, 'error');
+            document.getElementById('import-status').style.display = 'flex';
+            return; // Keep files selected to retry? Or clear? 
+            // Let's keep them so user can retry or clear manually.
+            // But UI is hidden. Let's show status again.
+        }
+    } else {
+        showToast(`Successfully imported ${totalHosts} hosts, ${totalPorts} ports from ${selectedFiles.length} files.`, 'success');
+    }
+
+    if (errors.length === 0 || totalHosts > 0) {
         clearImport();
-        document.getElementById('import-progress').style.display = 'none';
         document.getElementById('import-dropzone').style.display = 'block';
         loadDashboardStats();
-
-    } catch (err) {
-        showToast('Import failed: ' + err.message, 'error');
-        document.getElementById('import-progress').style.display = 'none';
-        document.getElementById('import-status').style.display = 'flex';
     }
 }

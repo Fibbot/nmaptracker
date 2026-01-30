@@ -216,6 +216,7 @@ th {
     letter-spacing: 0.5px;
     border-bottom: 1px solid var(--border);
     user-select: none;
+    vertical-align: middle;
 }
 
 th.sortable {
@@ -249,6 +250,7 @@ td {
     padding: 14px 16px;
     border-bottom: 1px solid var(--border);
     color: var(--text);
+    vertical-align: middle;
 }
 
 tr:last-child td {
@@ -625,6 +627,7 @@ label {
     opacity: 0.4;
     cursor: not-allowed;
 }
+
 /* Scope Management */
 .scope-content {
     padding-top: 20px;
@@ -827,7 +830,8 @@ label {
     display: flex;
     align-items: center;
     justify-content: center;
-    display: none; /* hidden by default */
+    display: none;
+    /* hidden by default */
 }
 
 .modal-backdrop {
@@ -887,8 +891,8 @@ label {
 }
 
 .notes-cell textarea.saved {
-  height: auto;
-  min-height: 60px;
+    height: auto;
+    min-height: 60px;
 }
 
 /* Collapsible Script Output */
@@ -899,4 +903,27 @@ label {
 .script-output-container.open .toggle-icon {
     transform: rotate(90deg);
     display: inline-block;
+}
+
+/* Table Actions */
+table .delete-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background-color: var(--red);
+    color: #000;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-weight: 800;
+    font-size: 16px;
+    line-height: 1;
+    transition: background-color 0.15s, transform 0.1s;
+}
+
+table .delete-btn:hover {
+    background-color: #dc2626;
+    transform: scale(1.05);
 }

@@ -181,6 +181,31 @@ func (s *Server) apiGetHost(w http.ResponseWriter, r *http.Request) {
 	s.jsonResponse(w, host, http.StatusOK)
 }
 
+func (s *Server) apiDeleteHost(w http.ResponseWriter, r *http.Request) {
+	projectID, hostID, err := projectHostIDs(r)
+	if err != nil {
+		s.badRequest(w, err)
+		return
+	}
+	// Verify host exists and matches project
+	host, found, err := s.DB.GetHostByID(hostID)
+	if err != nil {
+		s.serverError(w, err)
+		return
+	}
+	if !found || host.ProjectID != projectID {
+		s.errorResponse(w, fmt.Errorf("host not found"), http.StatusNotFound)
+		return
+	}
+
+	if err := s.DB.DeleteHost(hostID); err != nil {
+		s.serverError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+
+}
+
 func (s *Server) apiListPorts(w http.ResponseWriter, r *http.Request) {
 	projectID, hostID, err := projectHostIDs(r)
 	if err != nil {

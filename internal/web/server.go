@@ -34,6 +34,7 @@ func NewServer(database *db.DB) *Server {
 		r.Get("/projects/{id}/hosts", server.apiListHosts)
 		r.Get("/projects/{id}/hosts/{hostID}", server.apiGetHost)
 		r.Get("/projects/{id}/hosts/{hostID}/ports", server.apiListPorts)
+		r.Delete("/projects/{id}/hosts/{hostID}", server.apiDeleteHost)
 		r.Put("/projects/{id}/hosts/{hostID}/notes", server.apiUpdateHostNotes)
 		r.Put("/projects/{id}/hosts/{hostID}/ports/{portID}/status", server.apiUpdatePortStatus)
 		r.Put("/projects/{id}/hosts/{hostID}/ports/{portID}/notes", server.apiUpdatePortNotes)

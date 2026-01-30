@@ -49,40 +49,42 @@ async function loadProjects() {
         const tbody = document.getElementById('projects-list');
         tbody.innerHTML = '';
 
-        projects.forEach(p => {
-            const tr = document.createElement('tr');
+        if (projects) {
+            projects.forEach(p => {
+                const tr = document.createElement('tr');
 
-            const tdId = document.createElement('td');
-            tdId.textContent = p.ID;
+                const tdId = document.createElement('td');
+                tdId.textContent = p.ID;
 
-            const tdName = document.createElement('td');
-            const link = document.createElement('a');
-            link.href = `project.html?id=${p.ID}`;
-            link.textContent = p.Name;
-            tdName.appendChild(link);
+                const tdName = document.createElement('td');
+                const link = document.createElement('a');
+                link.href = `project.html?id=${p.ID}`;
+                link.textContent = p.Name;
+                tdName.appendChild(link);
 
-            const tdDate = document.createElement('td');
-            tdDate.textContent = new Date(p.CreatedAt).toLocaleString();
+                const tdDate = document.createElement('td');
+                tdDate.textContent = new Date(p.CreatedAt).toLocaleString();
 
-            const tdActions = document.createElement('td');
-            const delBtn = document.createElement('a'); // Changed to link style or button with class
-            delBtn.href = "#";
-            delBtn.textContent = 'Delete';
-            delBtn.className = 'btn btn-danger';
-            delBtn.style.padding = '4px 8px';
-            delBtn.style.fontSize = '12px';
-            delBtn.onclick = (e) => {
-                e.preventDefault();
-                deleteProject(p.ID, p.Name);
-            };
-            tdActions.appendChild(delBtn);
+                const tdActions = document.createElement('td');
+                const delBtn = document.createElement('a'); // Changed to link style or button with class
+                delBtn.href = "#";
+                delBtn.textContent = 'Delete';
+                delBtn.className = 'btn btn-danger';
+                delBtn.style.padding = '4px 8px';
+                delBtn.style.fontSize = '12px';
+                delBtn.onclick = (e) => {
+                    e.preventDefault();
+                    deleteProject(p.ID, p.Name);
+                };
+                tdActions.appendChild(delBtn);
 
-            tr.appendChild(tdId);
-            tr.appendChild(tdName);
-            tr.appendChild(tdDate);
-            tr.appendChild(tdActions);
-            tbody.appendChild(tr);
-        });
+                tr.appendChild(tdId);
+                tr.appendChild(tdName);
+                tr.appendChild(tdDate);
+                tr.appendChild(tdActions);
+                tbody.appendChild(tr);
+            });
+        }
     } catch (err) {
         showError(err.message);
     }
