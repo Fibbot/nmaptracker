@@ -37,19 +37,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
 
         document.getElementById('host-notes').value = host.Notes || '';
+        let lastHostNotes = host.Notes || '';
 
-        // Notes Saving
-        document.getElementById('save-notes-btn').addEventListener('click', async () => {
-            const notes = document.getElementById('host-notes').value;
+        // Notes Auto-Saving
+        const notesArea = document.getElementById('host-notes');
+        const saveHostNotes = async () => {
+            const notes = notesArea.value;
+            if (notes === lastHostNotes) return;
+
             try {
                 await api(`/projects/${projectId}/hosts/${hostId}/notes`, {
                     method: 'PUT',
                     body: JSON.stringify({ notes })
                 });
+                lastHostNotes = notes;
                 showToast('Host notes saved', 'success');
             } catch (err) {
                 showToast(err.message, 'error');
             }
+        };
+
+        const debouncedHostNotes = debounce(saveHostNotes, 1000);
+        notesArea.addEventListener('input', debouncedHostNotes);
+        notesArea.addEventListener('blur', () => {
+            debouncedHostNotes.cancel();
+            saveHostNotes();
         });
 
         // Bulk Actions
@@ -105,7 +117,7 @@ function renderPorts(ports, projectId, hostId) {
     tbody.innerHTML = '';
 
     if (!ports || ports.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No ports found matching filters</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No ports found matching filters</td></tr>';
         return;
     }
 
@@ -162,49 +174,53 @@ function renderPorts(ports, projectId, hostId) {
         tdNotes.appendChild(textarea);
         tr.appendChild(tdNotes);
 
-        // Action
-        const tdAction = document.createElement('td');
-        const saveBtn = document.createElement('button');
-        saveBtn.textContent = 'Save';
-        saveBtn.className = 'btn btn-primary';
-        saveBtn.style.padding = '6px 12px';
-        saveBtn.style.width = '100%';
-        saveBtn.style.fontSize = '12px';
-        tdAction.appendChild(saveBtn);
-        tr.appendChild(tdAction);
-
         tbody.appendChild(tr);
 
-        // Event Listener for Save
-        saveBtn.addEventListener('click', async () => {
+        // Event Listeners
+
+        // 1. Status Auto-Save
+        select.addEventListener('change', async () => {
             const newStatus = select.value;
+            try {
+                await api(`/projects/${projectId}/hosts/${hostId}/ports/${p.ID}/status`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ status: newStatus })
+                });
+                showToast('Port status saved', 'success');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        });
+
+        // 2. Notes Auto-Save
+        let lastPortNotes = p.Notes || '';
+
+        const savePortNotes = async () => {
             const newNotes = textarea.value;
+            if (newNotes === lastPortNotes) return;
 
             try {
-                // Update Status
-                if (newStatus !== p.WorkStatus) {
-                    await api(`/projects/${projectId}/hosts/${hostId}/ports/${p.ID}/status`, {
-                        method: 'PUT',
-                        body: JSON.stringify({ status: newStatus })
-                    });
-                }
-
-                // Update Notes
                 await api(`/projects/${projectId}/hosts/${hostId}/ports/${p.ID}/notes`, {
                     method: 'PUT',
                     body: JSON.stringify({ notes: newNotes })
                 });
 
-                // Reset height visuals
-                textarea.style.height = 'auto';
+                lastPortNotes = newNotes;
+
+                // Visual feedback
                 textarea.classList.add('saved');
                 setTimeout(() => textarea.classList.remove('saved'), 100);
-
-                showToast('Port saved', 'success');
-
+                showToast('Port notes saved', 'success');
             } catch (err) {
                 showToast(err.message, 'error');
             }
+        };
+
+        const debouncedPortNotes = debounce(savePortNotes, 1000);
+        textarea.addEventListener('input', debouncedPortNotes);
+        textarea.addEventListener('blur', () => {
+            debouncedPortNotes.cancel();
+            savePortNotes();
         });
     });
 }
