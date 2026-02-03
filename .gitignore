@@ -10,7 +10,6 @@
 go.work
 go.work.sum
 dist/
-
 # IDE/editor
 .idea/
 .vscode/
