@@ -19,16 +19,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Links
         document.getElementById('view-hosts-btn').href = `hosts.html?id=${projectId}`;
+        document.getElementById('view-all-scans-btn').href = `scan_results.html?id=${projectId}`;
         document.getElementById('link-total-hosts').href = `hosts.html?id=${projectId}`;
         document.getElementById('link-in-scope').href = `hosts.html?id=${projectId}&in_scope=true`;
         document.getElementById('link-out-scope').href = `hosts.html?id=${projectId}&in_scope=false`;
 
+        // Workflow Links
+        document.getElementById('link-wf-scanned').href = `scan_results.html?id=${projectId}&status=scanned`;
+        document.getElementById('link-wf-flagged').href = `scan_results.html?id=${projectId}&status=flagged`;
+        document.getElementById('link-wf-in-progress').href = `scan_results.html?id=${projectId}&status=in_progress`;
+        document.getElementById('link-wf-done').href = `scan_results.html?id=${projectId}&status=done`;
+
         // Export Links
-        const exportDiv = document.getElementById('export-links');
-        exportDiv.innerHTML = `
-            <a href="/api/projects/${projectId}/export?format=json" target="_blank" class="btn btn-secondary">Export JSON</a>
-            <a href="/api/projects/${projectId}/export?format=csv" target="_blank" class="btn btn-secondary">Export CSV</a>
+        const exportMenu = document.getElementById('export-menu');
+        exportMenu.innerHTML = `
+            <a href="/api/projects/${projectId}/export?format=json" target="_blank" class="dropdown-item">JSON</a>
+            <a href="/api/projects/${projectId}/export?format=csv" target="_blank" class="dropdown-item">CSV</a>
+            <a href="/api/projects/${projectId}/export?format=text" target="_blank" class="dropdown-item">TXT</a>
         `;
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.dropdown')) {
+                document.getElementById('export-menu').style.display = 'none';
+            }
+        });
 
         // Stats
         renderStats(stats);
@@ -55,10 +70,13 @@ function renderStats(stats) {
     document.getElementById('stat-flagged').textContent = stats.WorkStatus.Flagged;
     document.getElementById('stat-in-progress').textContent = stats.WorkStatus.InProgress;
     document.getElementById('stat-done').textContent = stats.WorkStatus.Done;
-    document.getElementById('stat-parking').textContent = stats.WorkStatus.ParkingLot;
 
     if (stats.InScopeHosts > 0) {
-        const pct = Math.round((stats.WorkStatus.Done / stats.InScopeHosts) * 100);
+        const totalPorts = stats.WorkStatus.Scanned + stats.WorkStatus.Flagged + stats.WorkStatus.InProgress + stats.WorkStatus.Done;
+        let pct = 0;
+        if (totalPorts > 0) {
+            pct = Math.round((stats.WorkStatus.Done / totalPorts) * 100);
+        }
         const pctStr = `${pct}%`;
         document.getElementById('progress-percent').textContent = pctStr;
         document.getElementById('progress-fill').style.width = pctStr;
@@ -308,3 +326,55 @@ async function uploadFile() {
         loadDashboardStats();
     }
 }
+
+// Rename Project
+// Rename Project
+function toggleEditName() {
+    const titleContainer = document.getElementById('page-title-container');
+    const form = document.getElementById('rename-form');
+
+    if (form.style.display === 'none') {
+        // Show form
+        titleContainer.style.display = 'none';
+        form.style.display = 'flex';
+        const currentName = document.getElementById('project-title').textContent;
+        document.getElementById('rename-input').value = currentName;
+        document.getElementById('rename-input').focus();
+    } else {
+        cancelRename();
+    }
+}
+
+function cancelRename() {
+    document.getElementById('page-title-container').style.display = 'block';
+    document.getElementById('rename-form').style.display = 'none';
+}
+
+async function saveProjectName() {
+    const projectId = getProjectId();
+    const newName = document.getElementById('rename-input').value.trim();
+    if (!newName) return;
+
+    try {
+        await api(`/projects/${projectId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ name: newName })
+        });
+        document.getElementById('project-title').textContent = newName;
+        document.getElementById('nav-project-name').textContent = newName;
+        document.title = `NmapTracker - ${newName}`;
+        cancelRename();
+        showToast('Project renamed', 'success');
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+function toggleExportMenu() {
+    const menu = document.getElementById('export-menu');
+    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+}
+window.toggleExportMenu = toggleExportMenu;
+window.toggleEditName = toggleEditName;
+window.saveProjectName = saveProjectName;
+window.cancelRename = cancelRename;

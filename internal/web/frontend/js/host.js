@@ -1,3 +1,5 @@
+let currentFilteredPorts = [];
+
 document.addEventListener('DOMContentLoaded', async () => {
     const projectId = getProjectId();
     const hostId = getHostId();
@@ -66,13 +68,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Bulk Actions
         document.getElementById('bulk-done-btn').addEventListener('click', async () => {
-            if (!confirm('Mark all open ports as DONE?')) return;
+            if (currentFilteredPorts.length === 0) {
+                showToast('No ports to update', 'info');
+                return;
+            }
+            if (!confirm(`Are you sure you want to mark ${currentFilteredPorts.length} ports as DONE?`)) return;
+
+            const ids = currentFilteredPorts.map(p => p.ID);
             try {
-                await api(`/projects/${projectId}/hosts/${hostId}/bulk-status`, {
+                await api(`/projects/${projectId}/ports/bulk-status`, {
                     method: 'POST',
-                    body: JSON.stringify({ status: 'done' })
+                    body: JSON.stringify({ ids: ids, status: 'done' })
                 });
-                showToast('All open ports marked as DONE', 'success');
+                showToast('Ports updated', 'success');
                 loadPorts(projectId, hostId);
             } catch (err) {
                 showToast(err.message, 'error');
@@ -80,8 +88,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         // Port Filters
-        document.querySelectorAll('.port-filter').forEach(cb => {
-            cb.addEventListener('change', () => loadPorts(projectId, hostId));
+        const allCheckbox = document.getElementById('filter-all');
+        const filters = document.querySelectorAll('.port-filter');
+
+        // All Checkbox Logic
+        allCheckbox.addEventListener('change', () => {
+            filters.forEach(cb => cb.checked = allCheckbox.checked);
+            loadPorts(projectId, hostId);
+        });
+
+        filters.forEach(cb => {
+            cb.addEventListener('change', () => {
+                // If any unchecked, uncheck All. If all checked, check All
+                const allChecked = Array.from(filters).every(c => c.checked);
+                allCheckbox.checked = allChecked;
+                loadPorts(projectId, hostId);
+            });
         });
 
         document.getElementById('refresh-ports-btn').addEventListener('click', () => {
@@ -115,6 +137,8 @@ async function loadPorts(projectId, hostId) {
 function renderPorts(ports, projectId, hostId) {
     const tbody = document.getElementById('ports-list');
     tbody.innerHTML = '';
+
+    currentFilteredPorts = ports || []; // apiListPorts filters server-side, so result IS the filtered list
 
     if (!ports || ports.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No ports found matching filters</td></tr>';
@@ -155,7 +179,7 @@ function renderPorts(ports, projectId, hostId) {
         const tdStatus = document.createElement('td');
         const select = document.createElement('select');
         select.style.width = '100%';
-        ['scanned', 'flagged', 'in_progress', 'done', 'parking_lot'].forEach(s => {
+        ['scanned', 'flagged', 'in_progress', 'done'].forEach(s => {
             const opt = document.createElement('option');
             opt.value = s;
             opt.textContent = s.replace('_', ' ').toUpperCase();

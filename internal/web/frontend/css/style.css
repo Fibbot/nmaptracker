@@ -798,9 +798,46 @@ label {
 }
 
 .btn-icon:hover {
-    border-color: var(--accent);
+    color: var(--text);
+    border-color: var(--text-dim);
+}
+
+/* Dropdown Items */
+.dropdown-item {
+    display: block;
+    padding: 8px 16px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 14px;
+    font-family: var(--font-sans);
+    transition: background 0.15s, color 0.15s;
+    border-radius: var(--radius);
+}
+
+.dropdown-item:hover {
+    background: var(--bg-elevated);
     color: var(--accent);
 }
+
+/* Dropdown Menu (Popover) */
+.dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    margin-top: 8px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px;
+    min-width: 160px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    display: none;
+    /* Toggled via JS styling inline usually, but class helps defaults */
+}
+
+
+
 
 .script-output-content {
     margin: 0;

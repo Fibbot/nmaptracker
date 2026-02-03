@@ -24,11 +24,28 @@
         </div>
 
         <div class="page-header">
-            <h1 class="page-title" id="project-title">Project Dashboard</h1>
-            <div class="flex-row">
+            <h1 class="page-title" id="page-title-container">
+                <span id="project-title">Project Dashboard</span>
+                <span id="edit-project-name" onclick="toggleEditName()"
+                    style="cursor: pointer; font-size: 0.6em; margin-left: 10px;" title="Edit Name">✏️</span>
+            </h1>
+
+            <div id="rename-form" style="display:none; align-items: center; gap: 10px;">
+                <input type="text" id="rename-input" placeholder="New Project Name"
+                    style="font-size: 1.2rem; padding: 4px;">
+                <span onclick="saveProjectName()" style="cursor: pointer; font-size: 1.2rem;" title="Save">✅</span>
+                <span onclick="cancelRename()" style="cursor: pointer; font-size: 1.2rem;" title="Cancel">❌</span>
+            </div>
+
+            <div class="flex-row" style="margin-top: 16px;">
                 <a id="view-hosts-btn" class="btn btn-primary" href="#">View Hosts</a>
-                <div id="export-links" class="flex-row">
-                    <!-- Populated by JS -->
+                <a id="view-all-scans-btn" class="btn btn-primary" href="#" style="margin-left: 10px;">View All
+                    Scans</a>
+                <div class="dropdown" style="margin-left: auto; position: relative;">
+                    <button class="btn btn-secondary dropdown-toggle" onclick="toggleExportMenu()">Export ▼</button>
+                    <div id="export-menu" class="dropdown-menu" style="display: none;">
+                        <!-- Links populated by JS -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -122,26 +139,22 @@
             <div class="stats-card">
                 <div class="stats-card-title">Workflow</div>
                 <div class="stats-grid">
-                    <div class="stat-item">
+                    <a id="link-wf-scanned" href="#" class="stat-item clickable">
                         <span class="stat-label">Scanned</span>
                         <span class="stat-value" id="stat-scanned">0</span>
-                    </div>
-                    <div class="stat-item">
+                    </a>
+                    <a id="link-wf-flagged" href="#" class="stat-item clickable">
                         <span class="stat-label">Flagged</span>
                         <span class="stat-value" id="stat-flagged">0</span>
-                    </div>
-                    <div class="stat-item">
+                    </a>
+                    <a id="link-wf-in-progress" href="#" class="stat-item clickable">
                         <span class="stat-label">In Progress</span>
                         <span class="stat-value" id="stat-in-progress">0</span>
-                    </div>
-                    <div class="stat-item">
+                    </a>
+                    <a id="link-wf-done" href="#" class="stat-item clickable">
                         <span class="stat-label">Done</span>
                         <span class="stat-value" id="stat-done">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Parking Lot</span>
-                        <span class="stat-value" id="stat-parking">0</span>
-                    </div>
+                    </a>
                 </div>
 
                 <div class="progress-container">

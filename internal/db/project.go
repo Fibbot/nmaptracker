@@ -18,6 +18,18 @@ func (db *DB) CreateProject(name string) (Project, error) {
 	return p, nil
 }
 
+// UpdateProject updates an existing project's name.
+func (db *DB) UpdateProject(id int64, name string) error {
+	res, err := db.Exec(`UPDATE project SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, name, id)
+	if err != nil {
+		return fmt.Errorf("update project: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // ListProjects returns all projects ordered by name.
 func (db *DB) ListProjects() ([]Project, error) {
 	rows, err := db.Query(`SELECT id, name, created_at, updated_at FROM project ORDER BY name`)

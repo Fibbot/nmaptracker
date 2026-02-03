@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NmapTracker - Host Detail</title>
+    <title>NmapTracker - All Scans</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -12,7 +12,7 @@
         rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <script src="js/app.js"></script>
-    <script src="js/host.js"></script>
+    <script src="js/scan_results.js"></script>
 </head>
 
 <body>
@@ -22,40 +22,34 @@
             <span class="separator">/</span>
             <a href="#" id="nav-project-name">Project</a>
             <span class="separator">/</span>
-            <a href="#" id="nav-hosts-link">Hosts</a>
-            <span class="separator">/</span>
-            <span class="current" id="nav-host-ip">Host</span>
+            <span class="current">All Scans</span>
         </div>
 
         <div class="page-header">
-            <h1 class="page-title" id="host-title">Host Detail</h1>
-            <div id="host-meta" class="flex-row">
-                <!-- Populated by JS -->
-            </div>
+            <h1 class="page-title">All Scans</h1>
+            <div id="filter-status-display" style="font-size: 14px; color: var(--text-muted);"></div>
         </div>
 
         <div id="error-msg" class="error"></div>
 
         <div class="card">
-            <div class="card-header" style="cursor: pointer;" onclick="toggleHostNotes()">
-                <div class="card-title">Host Notes</div>
-                <span id="host-notes-toggle-icon">▼</span>
-            </div>
-            <div id="host-notes-content" style="display: none;">
-                <textarea id="host-notes" placeholder="Enter notes here..."></textarea>
-                <!-- Auto-save implemented, button removed -->
-            </div>
-        </div>
-
-        <div class="card">
             <div class="card-header">
-                <div class="card-title">Ports</div>
-                <div id="bulk-actions">
-                    <button class="btn btn-secondary" id="bulk-done-btn">Mark Displayed as Done</button>
+                <div class="card-title">All Ports</div>
+                <div class="flex-row">
+                    <select id="status-filter-select" style="margin-right: 10px;">
+                        <option value="">All Statuses</option>
+                        <option value="scanned">Scanned</option>
+                        <option value="flagged">Flagged</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="done">Done</option>
+                    </select>
+                    <button class="btn btn-secondary" id="bulk-done-btn" style="margin-right: 10px;">Mark Displayed as
+                        Done</button>
+                    <button class="btn btn-primary" id="refresh-btn">Refresh</button>
                 </div>
             </div>
 
-            <div class="flex-row" style="margin-bottom: 20px; flex-wrap: wrap;">
+            <div class="flex-row" style="margin-bottom: 20px; flex-wrap: wrap; padding: 0 24px;">
                 <label class="flex-row" style="margin-right: 16px; margin-bottom: 0; cursor: pointer;">
                     <input type="checkbox" id="filter-all">
                     <span class="badge" style="background: var(--bg-elevated); color: var(--text);">All</span>
@@ -77,20 +71,18 @@
                     <input type="checkbox" class="port-filter" value="filtered">
                     <span class="badge badge-filtered">Filtered</span>
                 </label>
-
-                <button id="refresh-ports-btn" class="btn btn-secondary" style="margin-left: auto;">Refresh</button>
             </div>
 
             <div class="table-container">
                 <table>
                     <thead>
                         <tr>
-                            <th style="width: 100px;" class="sortable">Port</th>
-                            <th style="width: 100px;" class="sortable">State</th>
+                            <th class="sortable">Host</th>
+                            <th class="sortable">Port</th>
+                            <th class="sortable">State</th>
                             <th class="sortable">Service</th>
-                            <th style="width: 180px;" class="sortable">Status</th>
+                            <th class="sortable">Status</th>
                             <th>Notes</th>
-                            <!-- Action column removed -->
                         </tr>
                     </thead>
                     <tbody id="ports-list">
@@ -100,11 +92,8 @@
             </div>
         </div>
     </div>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            makeSortable(document.querySelector('table'));
-        });
-    </script>
+
+    <!-- Script Output Modal -->
     <div id="content-modal" class="modal">
         <div class="modal-backdrop" onclick="closeModal()"></div>
         <div class="modal-content">

@@ -36,7 +36,7 @@ func (db *DB) GetDashboardStats(projectID int64) (DashboardStats, error) {
 		`SELECT p.work_status, COUNT(*)
 		   FROM port p
 		   JOIN host h ON h.id = p.host_id
-		  WHERE h.project_id = ? AND p.state = 'open'
+		  WHERE h.project_id = ? AND p.state = 'open' AND h.in_scope = 1
 		  GROUP BY p.work_status`,
 		projectID,
 	)

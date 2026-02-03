@@ -63,6 +63,44 @@ func (db *DB) ListPorts(hostID int64) ([]Port, error) {
 	return ports, nil
 }
 
+// ProjectPort extends Port with Host info.
+type ProjectPort struct {
+	Port
+	HostIP   string
+	Hostname string
+}
+
+// ListProjectPorts returns all ports for a project with host info.
+func (db *DB) ListProjectPorts(projectID int64) ([]ProjectPort, error) {
+	query := `
+		SELECT 
+			p.id, p.host_id, p.port_number, p.protocol, p.state, p.service, p.version, p.product, p.extra_info, p.work_status, p.script_output, p.notes, p.last_seen, p.created_at, p.updated_at,
+			h.ip_address, h.hostname
+		FROM port p
+		JOIN host h ON p.host_id = h.id
+		WHERE h.project_id = ?
+		ORDER BY h.ip_address, p.port_number
+	`
+	rows, err := db.Query(query, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list project ports: %w", err)
+	}
+	defer rows.Close()
+
+	var ports []ProjectPort
+	for rows.Next() {
+		var pp ProjectPort
+		if err := rows.Scan(
+			&pp.ID, &pp.HostID, &pp.PortNumber, &pp.Protocol, &pp.State, &pp.Service, &pp.Version, &pp.Product, &pp.ExtraInfo, &pp.WorkStatus, &pp.ScriptOutput, &pp.Notes, &pp.LastSeen, &pp.CreatedAt, &pp.UpdatedAt,
+			&pp.HostIP, &pp.Hostname,
+		); err != nil {
+			return nil, fmt.Errorf("scan project port: %w", err)
+		}
+		ports = append(ports, pp)
+	}
+	return ports, rows.Err()
+}
+
 // DeletePort removes a port by ID.
 func (db *DB) DeletePort(id int64) error {
 	res, err := db.Exec(`DELETE FROM port WHERE id = ?`, id)
@@ -271,4 +309,28 @@ func makePlaceholders(n int) string {
 		parts[i] = "?"
 	}
 	return strings.Join(parts, ",")
+}
+
+// BulkUpdatePortStatuses sets work_status for a list of port IDs.
+func (db *DB) BulkUpdatePortStatuses(ids []int64, status string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	// no placeholders helper exposed? It's unexported at bottom. fine.
+	placeholders := makePlaceholders(len(ids))
+	args := []any{status}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`UPDATE port SET work_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (%s)`, placeholders)
+	if _, err := tx.Exec(query, args...); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("bulk update statuses: %w", err)
+	}
+	return tx.Commit()
 }
