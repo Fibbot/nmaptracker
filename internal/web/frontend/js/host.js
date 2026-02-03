@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // All Checkbox Logic
         allCheckbox.addEventListener('change', () => {
             filters.forEach(cb => cb.checked = allCheckbox.checked);
-            loadPorts(projectId, hostId);
+            renderPorts(window.hostPorts || [], projectId, hostId);
         });
 
         filters.forEach(cb => {
@@ -102,13 +102,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // If any unchecked, uncheck All. If all checked, check All
                 const allChecked = Array.from(filters).every(c => c.checked);
                 allCheckbox.checked = allChecked;
-                loadPorts(projectId, hostId);
+                renderPorts(window.hostPorts || [], projectId, hostId);
             });
-        });
-
-        document.getElementById('refresh-ports-btn').addEventListener('click', () => {
-            loadPorts(projectId, hostId);
-            showToast('Ports refreshed', 'info');
         });
 
         // Load Ports
@@ -121,12 +116,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function loadPorts(projectId, hostId) {
-    const states = Array.from(document.querySelectorAll('.port-filter:checked')).map(cb => cb.value);
-    const params = new URLSearchParams();
-    states.forEach(s => params.append('state', s));
-
+    // Fetch ALL ports for client-side filtering
     try {
-        const ports = await api(`/projects/${projectId}/hosts/${hostId}/ports?${params.toString()}`);
+        const ports = await api(`/projects/${projectId}/hosts/${hostId}/ports`);
+        window.hostPorts = ports; // Store globally
         renderPorts(ports, projectId, hostId);
     } catch (err) {
         document.getElementById('error-msg').textContent = err.message;
@@ -134,11 +127,14 @@ async function loadPorts(projectId, hostId) {
     }
 }
 
-function renderPorts(ports, projectId, hostId) {
+function renderPorts(allPorts, projectId, hostId) {
     const tbody = document.getElementById('ports-list');
     tbody.innerHTML = '';
 
-    currentFilteredPorts = ports || []; // apiListPorts filters server-side, so result IS the filtered list
+    const states = Array.from(document.querySelectorAll('.port-filter:checked')).map(cb => cb.value);
+    const ports = allPorts.filter(p => states.includes(p.State));
+
+    currentFilteredPorts = ports || [];
 
     if (!ports || ports.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No ports found matching filters</td></tr>';

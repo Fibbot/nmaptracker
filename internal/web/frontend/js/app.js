@@ -93,6 +93,26 @@ function makeSortable(table) {
                 const aVal = aCell.textContent.trim();
                 const bVal = bCell.textContent.trim();
 
+                // IP Address Sort
+                const isIp = (str) => /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(str);
+
+                // Helper to extract IP if it's inside a link or mixed content
+                // But textContent usually returns just the text, e.g. "192.168.1.1".
+                // Sometimes it might have newlines if complex. 
+                // Let's assume the cell starts with an IP or is an IP.
+
+                // Better approach: Check if it LOOKS like an IP (IPv4)
+                const ipRegex = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/;
+                const aIpMatch = aVal.match(ipRegex);
+                const bIpMatch = bVal.match(ipRegex);
+
+                if (aIpMatch && bIpMatch) {
+                    const ipToNum = (ip) => {
+                        return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+                    };
+                    return (ipToNum(aIpMatch[0]) - ipToNum(bIpMatch[0])) * direction;
+                }
+
                 // Try numeric sort first
                 const aNum = parseFloat(aVal);
                 const bNum = parseFloat(bVal);

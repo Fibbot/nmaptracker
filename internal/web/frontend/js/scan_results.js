@@ -24,8 +24,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         loadAllPorts(projectId);
 
-        document.getElementById('refresh-btn').addEventListener('click', () => loadAllPorts(projectId));
-
         document.getElementById('bulk-done-btn').addEventListener('click', async () => {
             if (currentFilteredPorts.length === 0) {
                 showToast('No ports to update', 'info');
