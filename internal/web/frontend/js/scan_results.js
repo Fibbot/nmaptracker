@@ -1,4 +1,9 @@
 let currentFilteredPorts = [];
+let currentPage = 1;
+const PAGE_SIZE = 100;
+let currentTotal = 0;
+
+const ALLOWED_STATES = ['open', 'open|filtered', 'closed', 'filtered', 'closed|filtered', 'unfiltered'];
 
 document.addEventListener('DOMContentLoaded', async () => {
     const projectId = getProjectId();
@@ -20,10 +25,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('filter-status-display').textContent = `Filtering by: ${initialStatus.toUpperCase().replace('_', ' ')}`;
         }
 
-        loadAllPorts(projectId);
-
-        loadAllPorts(projectId);
-
         document.getElementById('bulk-done-btn').addEventListener('click', async () => {
             if (currentFilteredPorts.length === 0) {
                 showToast('No ports to update', 'info');
@@ -38,14 +39,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     body: JSON.stringify({ ids: ids, status: 'done' })
                 });
                 showToast('Ports updated', 'success');
-                loadAllPorts(projectId);
+                loadPortsPage(projectId);
             } catch (err) {
                 showToast(err.message, 'error');
             }
         });
 
         document.getElementById('status-filter-select').addEventListener('change', () => {
-            // Update URL param without reload
             const val = document.getElementById('status-filter-select').value;
             const url = new URL(window.location);
             if (val) {
@@ -55,30 +55,44 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             window.history.pushState({}, '', url);
             document.getElementById('filter-status-display').textContent = val ? `Filtering by: ${val.toUpperCase().replace('_', ' ')}` : '';
-            loadAllPorts(projectId);
+            currentPage = 1;
+            loadPortsPage(projectId);
         });
 
-        // Port Filters: Trigger re-render on change
-        // Port Filters: Trigger re-render on change
         const allCheckbox = document.getElementById('filter-all');
         const filters = document.querySelectorAll('.port-filter');
 
-        // All Checkbox logic
         allCheckbox.addEventListener('change', () => {
             filters.forEach(cb => cb.checked = allCheckbox.checked);
-            const ports = window.allProjectPorts || [];
-            renderAllPorts(ports, projectId);
+            currentPage = 1;
+            loadPortsPage(projectId);
         });
 
         filters.forEach(cb => {
             cb.addEventListener('change', () => {
                 const allChecked = Array.from(filters).every(c => c.checked);
                 allCheckbox.checked = allChecked;
-
-                const ports = window.allProjectPorts || [];
-                renderAllPorts(ports, projectId);
+                currentPage = 1;
+                loadPortsPage(projectId);
             });
         });
+
+        document.getElementById('prev-btn').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                loadPortsPage(projectId);
+            }
+        });
+
+        document.getElementById('next-btn').addEventListener('click', () => {
+            if (currentPage * PAGE_SIZE < currentTotal) {
+                currentPage++;
+                loadPortsPage(projectId);
+            }
+        });
+
+        makeSortable(document.querySelector('table'));
+        loadPortsPage(projectId);
 
     } catch (err) {
         document.getElementById('error-msg').textContent = err.message;
@@ -86,64 +100,108 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-async function loadAllPorts(projectId) {
+function getCheckedStates() {
+    const checked = Array.from(document.querySelectorAll('.port-filter:checked')).map(cb => cb.value);
+    return checked.filter(val => ALLOWED_STATES.includes(val));
+}
+
+async function loadPortsPage(projectId) {
     const status = document.getElementById('status-filter-select').value;
     const params = new URLSearchParams();
+    params.append('page', currentPage);
+    params.append('page_size', PAGE_SIZE);
+
     if (status) params.append('status', status);
 
+    const states = getCheckedStates();
+    if (states.length > 0) {
+        params.append('state', states.join(','));
+    }
+
     try {
-        // Fetch all ports (filtered by status)
-        const ports = await api(`/projects/${projectId}/ports/all?${params.toString()}`);
-        window.allProjectPorts = ports; // Store for client-side filtering
-        renderAllPorts(ports, projectId);
+        const data = await api(`/projects/${projectId}/ports/all?${params.toString()}`);
+        currentTotal = data.total;
+        renderPorts(data.items, projectId);
+        updatePagination();
     } catch (err) {
         document.getElementById('error-msg').textContent = err.message;
         document.getElementById('error-msg').style.display = 'block';
     }
 }
 
-function renderAllPorts(ports, projectId) {
+function renderPorts(ports, projectId) {
     const tbody = document.getElementById('ports-list');
     tbody.innerHTML = '';
 
-    // Client-side filtering by Port State (checkboxes)
-    const checkedStates = Array.from(document.querySelectorAll('.port-filter:checked')).map(cb => cb.value);
-    // Create a set or map for fast lookup if needed, but array.includes is fine
+    currentFilteredPorts = ports || [];
 
-    // Filter
-    const filteredPorts = ports.filter(p => checkedStates.includes(p.State));
-    currentFilteredPorts = filteredPorts;
-
-    if (!filteredPorts || filteredPorts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No ports found matching filters</td></tr>';
+    if (!ports || ports.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 6;
+        td.style.textAlign = 'center';
+        td.textContent = 'No ports found matching filters';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
         return;
     }
 
-    filteredPorts.forEach(p => {
+    ports.forEach(p => {
         const tr = document.createElement('tr');
 
         // Host Link
-        const hostUrl = `host.html?id=${projectId}&hostID=${p.HostID}`;
-        const hostDisplay = `<div><a href="${hostUrl}" style="font-weight:600; text-decoration:none; color:var(--primary-color);">${p.HostIP}</a></div><div style="font-size:12px; color:var(--text-dim);">${p.Hostname || ''}</div>`;
+        const tdHost = document.createElement('td');
+        const hostLink = document.createElement('a');
+        hostLink.href = `host.html?id=${projectId}&hostId=${p.HostID}`;
+        hostLink.style.fontWeight = '600';
+        hostLink.style.textDecoration = 'none';
+        hostLink.style.color = 'var(--primary-color)';
+        hostLink.textContent = p.HostIP;
+        const hostMeta = document.createElement('div');
+        hostMeta.style.fontSize = '12px';
+        hostMeta.style.color = 'var(--text-dim)';
+        hostMeta.textContent = p.Hostname || '';
+        tdHost.appendChild(hostLink);
+        tdHost.appendChild(hostMeta);
+        tr.appendChild(tdHost);
 
-        tr.innerHTML = `
-            <td>${hostDisplay}</td>
-            <td>${p.PortNumber}/${p.Protocol}</td>
-            <td><span class="badge badge-${escapeHtml(p.State)}">${p.State}</span></td>
-            <td>
-                <div style="font-weight: 500">${p.Service}</div>
-                <div style="font-size: 12px; color: var(--text-dim);">${p.Product || ''} ${p.Version || ''}</div>
-                ${p.ScriptOutput ? `
-                    <button class="btn-icon" style="font-size: 12px;" onclick="openModal('Script Output', '${escapeHtml(p.ScriptOutput.replace(/'/g, "\\'"))}')">Script Output</button>
-                ` : ''}
-            </td>
-        `;
+        const tdPort = document.createElement('td');
+        tdPort.textContent = `${p.PortNumber}/${p.Protocol}`;
+        tr.appendChild(tdPort);
 
-        // Status Select
+        const tdState = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = `badge ${stateBadgeClass(p.State)}`;
+        badge.textContent = p.State;
+        tdState.appendChild(badge);
+        tr.appendChild(tdState);
+
+        const tdService = document.createElement('td');
+        const svcName = document.createElement('div');
+        svcName.style.fontWeight = '500';
+        svcName.textContent = p.Service || '';
+        const svcMeta = document.createElement('div');
+        svcMeta.style.fontSize = '12px';
+        svcMeta.style.color = 'var(--text-dim)';
+        svcMeta.textContent = `${p.Product || ''} ${p.Version || ''}`.trim();
+        tdService.appendChild(svcName);
+        tdService.appendChild(svcMeta);
+        if (p.ScriptOutput) {
+            const btn = document.createElement('button');
+            btn.className = 'btn-icon';
+            btn.style.fontSize = '12px';
+            btn.textContent = 'Script Output';
+            btn.addEventListener('click', () => {
+                openModal('Script Output', p.ScriptOutput);
+            });
+            tdService.appendChild(btn);
+        }
+        tr.appendChild(tdService);
+
         const tdStatus = document.createElement('td');
         const select = document.createElement('select');
         select.style.width = '100%';
-        ['scanned', 'flagged', 'in_progress', 'done'].forEach(s => {
+        ['scanned', 'flagged', 'in_progress', 'done', 'parking_lot'].forEach(s => {
             const opt = document.createElement('option');
             opt.value = s;
             opt.textContent = s.replace('_', ' ').toUpperCase();
@@ -164,11 +222,10 @@ function renderAllPorts(ports, projectId) {
         tdStatus.appendChild(select);
         tr.appendChild(tdStatus);
 
-        // Notes (ReadOnly-ish or simple edit?) Let's make it editable
         const tdNotes = document.createElement('td');
         const textarea = document.createElement('textarea');
         textarea.value = p.Notes || '';
-        textarea.placeholder = "Notes...";
+        textarea.placeholder = 'Notes...';
 
         let lastNotes = p.Notes || '';
         const saveNotes = async () => {
@@ -195,25 +252,26 @@ function renderAllPorts(ports, projectId) {
 
         tbody.appendChild(tr);
     });
-
-    makeSortable(document.querySelector('table'));
 }
 
-// Global Modal (Copied from host.js, ideally shared but duplication is acceptable for now)
-function openModal(title, content) {
-    document.getElementById('modal-title').textContent = title;
-    document.getElementById('modal-body').textContent = content;
-    document.getElementById('content-modal').style.display = 'flex';
+function updatePagination() {
+    document.getElementById('page-info').textContent = `Page ${currentPage} of ${Math.ceil(currentTotal / PAGE_SIZE) || 1}`;
+    document.getElementById('prev-btn').disabled = currentPage <= 1;
+    document.getElementById('next-btn').disabled = currentPage * PAGE_SIZE >= currentTotal;
 }
-function closeModal() {
-    document.getElementById('content-modal').style.display = 'none';
+
+function stateBadgeClass(state) {
+    switch ((state || '').toLowerCase()) {
+        case 'open':
+            return 'badge-open';
+        case 'closed':
+            return 'badge-closed';
+        case 'filtered':
+        case 'open|filtered':
+        case 'closed|filtered':
+        case 'unfiltered':
+            return 'badge-filtered';
+        default:
+            return 'badge-filtered';
+    }
 }
-function copyModalContent() {
-    const content = document.getElementById('modal-body').textContent;
-    navigator.clipboard.writeText(content).then(() => {
-        showToast('Copied to clipboard', 'success');
-    });
-}
-window.openModal = openModal;
-window.closeModal = closeModal;
-window.copyModalContent = copyModalContent;

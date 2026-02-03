@@ -3,7 +3,10 @@ package web
 import (
 	"embed"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/sloppy/nmaptracker/internal/db"
@@ -26,6 +29,7 @@ func NewServer(database *db.DB) *Server {
 
 	// API Routes
 	r.Route("/api", func(r chi.Router) {
+		r.Use(csrfGuard)
 		r.Get("/projects", server.apiListProjects)
 		r.Post("/projects", server.apiCreateProject)
 		r.Get("/projects/{id}", server.apiGetProject)
@@ -69,4 +73,66 @@ func NewServer(database *db.DB) *Server {
 // Handler exposes the configured router.
 func (s *Server) Handler() http.Handler {
 	return s.Router
+}
+
+func csrfGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if origin == "null" {
+			http.Error(w, "invalid origin", http.StatusForbidden)
+			return
+		}
+		originURL, err := url.Parse(origin)
+		if err != nil || originURL.Host == "" {
+			http.Error(w, "invalid origin", http.StatusForbidden)
+			return
+		}
+
+		originHost := originURL.Hostname()
+		if !isLocalHost(originHost) {
+			http.Error(w, "invalid origin", http.StatusForbidden)
+			return
+		}
+
+		requestHost := r.Host
+		requestHostName := requestHost
+		requestPort := ""
+		if strings.Contains(requestHost, ":") {
+			host, port, err := net.SplitHostPort(requestHost)
+			if err == nil {
+				requestHostName = host
+				requestPort = port
+			}
+		}
+		if !isLocalHost(requestHostName) {
+			http.Error(w, "invalid host", http.StatusForbidden)
+			return
+		}
+
+		if originURL.Port() != "" && requestPort != "" && originURL.Port() != requestPort {
+			http.Error(w, "invalid origin", http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isLocalHost(host string) bool {
+	switch strings.ToLower(host) {
+	case "localhost", "127.0.0.1":
+		return true
+	default:
+		return false
+	}
 }

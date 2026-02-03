@@ -101,6 +101,105 @@ func (db *DB) ListProjectPorts(projectID int64) ([]ProjectPort, error) {
 	return ports, rows.Err()
 }
 
+// ListProjectPortsPaged returns ports for a project with optional filters and pagination.
+func (db *DB) ListProjectPortsPaged(projectID int64, states, statuses []string, limit, offset int) ([]ProjectPort, int, error) {
+	var conditions []string
+	var args []any
+
+	conditions = append(conditions, "h.project_id = ?")
+	args = append(args, projectID)
+
+	if len(states) > 0 {
+		placeholders := makePlaceholders(len(states))
+		conditions = append(conditions, fmt.Sprintf("p.state IN (%s)", placeholders))
+		for _, state := range states {
+			args = append(args, state)
+		}
+	}
+	if len(statuses) > 0 {
+		placeholders := makePlaceholders(len(statuses))
+		conditions = append(conditions, fmt.Sprintf("p.work_status IN (%s)", placeholders))
+		for _, status := range statuses {
+			args = append(args, status)
+		}
+	}
+
+	where := strings.Join(conditions, " AND ")
+	countQuery := fmt.Sprintf(
+		`SELECT COUNT(*)
+		   FROM port p
+		   JOIN host h ON p.host_id = h.id
+		  WHERE %s`,
+		where,
+	)
+	var total int
+	if err := db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count project ports: %w", err)
+	}
+
+	query := fmt.Sprintf(
+		`SELECT 
+			p.id, p.host_id, p.port_number, p.protocol, p.state, p.service, p.version, p.product, p.extra_info, p.work_status, p.script_output, p.notes, p.last_seen, p.created_at, p.updated_at,
+			h.ip_address, h.hostname
+		FROM port p
+		JOIN host h ON p.host_id = h.id
+		WHERE %s
+		ORDER BY h.ip_address, p.port_number, p.protocol
+		LIMIT ? OFFSET ?`,
+		where,
+	)
+	argsWithPaging := append(args, limit, offset)
+	rows, err := db.Query(query, argsWithPaging...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list project ports paged: %w", err)
+	}
+	defer rows.Close()
+
+	var ports []ProjectPort
+	for rows.Next() {
+		var pp ProjectPort
+		if err := rows.Scan(
+			&pp.ID, &pp.HostID, &pp.PortNumber, &pp.Protocol, &pp.State, &pp.Service, &pp.Version, &pp.Product, &pp.ExtraInfo, &pp.WorkStatus, &pp.ScriptOutput, &pp.Notes, &pp.LastSeen, &pp.CreatedAt, &pp.UpdatedAt,
+			&pp.HostIP, &pp.Hostname,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan project port: %w", err)
+		}
+		ports = append(ports, pp)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("list project ports paged rows: %w", err)
+	}
+	return ports, total, nil
+}
+
+// ListPortsByProject returns all ports for a project.
+func (db *DB) ListPortsByProject(projectID int64) ([]Port, error) {
+	query := `
+		SELECT p.id, p.host_id, p.port_number, p.protocol, p.state, p.service, p.version, p.product, p.extra_info, p.work_status, p.script_output, p.notes, p.last_seen, p.created_at, p.updated_at
+		  FROM port p
+		  JOIN host h ON p.host_id = h.id
+		 WHERE h.project_id = ?
+		 ORDER BY h.ip_address, p.port_number`
+	rows, err := db.Query(query, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list ports by project: %w", err)
+	}
+	defer rows.Close()
+
+	var ports []Port
+	for rows.Next() {
+		var p Port
+		if err := rows.Scan(&p.ID, &p.HostID, &p.PortNumber, &p.Protocol, &p.State, &p.Service, &p.Version, &p.Product, &p.ExtraInfo, &p.WorkStatus, &p.ScriptOutput, &p.Notes, &p.LastSeen, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan port: %w", err)
+		}
+		ports = append(ports, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list ports by project rows: %w", err)
+	}
+	return ports, nil
+}
+
 // DeletePort removes a port by ID.
 func (db *DB) DeletePort(id int64) error {
 	res, err := db.Exec(`DELETE FROM port WHERE id = ?`, id)
@@ -331,6 +430,36 @@ func (db *DB) BulkUpdatePortStatuses(ids []int64, status string) error {
 	if _, err := tx.Exec(query, args...); err != nil {
 		tx.Rollback()
 		return fmt.Errorf("bulk update statuses: %w", err)
+	}
+	return tx.Commit()
+}
+
+// BulkUpdatePortStatusesForProject sets work_status for port IDs scoped to a project.
+func (db *DB) BulkUpdatePortStatusesForProject(projectID int64, ids []int64, status string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	placeholders := makePlaceholders(len(ids))
+	args := []any{status}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	args = append(args, projectID)
+
+	query := fmt.Sprintf(
+		`UPDATE port
+		    SET work_status = ?, updated_at = CURRENT_TIMESTAMP
+		  WHERE id IN (%s)
+		    AND host_id IN (SELECT id FROM host WHERE project_id = ?)`,
+		placeholders,
+	)
+	if _, err := tx.Exec(query, args...); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("bulk update statuses scoped: %w", err)
 	}
 	return tx.Commit()
 }

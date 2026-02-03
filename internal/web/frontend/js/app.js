@@ -156,3 +156,32 @@ function debounce(func, wait) {
     };
     return executedFunction;
 }
+
+function openModal(title, content) {
+    const modal = document.getElementById('content-modal');
+    if (!modal) return;
+    const titleEl = document.getElementById('modal-title');
+    const bodyEl = document.getElementById('modal-body');
+    if (titleEl) titleEl.textContent = title;
+    if (bodyEl) bodyEl.textContent = content;
+    modal.style.display = 'flex';
+}
+
+function closeModal() {
+    const modal = document.getElementById('content-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+}
+
+function copyModalContent() {
+    const bodyEl = document.getElementById('modal-body');
+    if (!bodyEl) return;
+    const content = bodyEl.textContent || '';
+    navigator.clipboard.writeText(content).then(() => {
+        showToast('Copied to clipboard', 'success');
+    });
+}
+
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.copyModalContent = copyModalContent;

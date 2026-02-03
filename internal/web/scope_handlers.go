@@ -1,6 +1,7 @@
 package web
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -61,15 +62,22 @@ func (s *Server) apiAddScope(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiDeleteScope(w http.ResponseWriter, r *http.Request) {
-	// project ID is in path but not strictly needed for deletion by primary key ID,
-	// but good for authz if we had it.
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		s.badRequest(w, err)
+		return
+	}
 	scopeID, err := strconv.ParseInt(chi.URLParam(r, "scopeID"), 10, 64)
 	if err != nil {
 		s.badRequest(w, err)
 		return
 	}
 
-	if err := s.DB.DeleteScopeDefinition(scopeID); err != nil {
+	if err := s.DB.DeleteScopeDefinitionForProject(projectID, scopeID); err != nil {
+		if err == sql.ErrNoRows {
+			s.errorResponse(w, fmt.Errorf("scope not found"), http.StatusNotFound)
+			return
+		}
 		s.serverError(w, err)
 		return
 	}
@@ -168,8 +176,9 @@ func (s *Server) apiImportXML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Limit 50MB
-	if err := r.ParseMultipartForm(50 << 20); err != nil {
+	// Limit upload size to 200MB
+	r.Body = http.MaxBytesReader(w, r.Body, 200<<20)
+	if err := r.ParseMultipartForm(200 << 20); err != nil {
 		s.badRequest(w, fmt.Errorf("parse form: %w", err))
 		return
 	}
@@ -180,13 +189,6 @@ func (s *Server) apiImportXML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-
-	// Parse
-	obs, err := importer.ParseXML(file)
-	if err != nil {
-		s.badRequest(w, fmt.Errorf("parse xml: %w", err))
-		return
-	}
 
 	// Scope
 	rules, err := s.DB.ListScopeDefinitions(projectID)
@@ -205,7 +207,7 @@ func (s *Server) apiImportXML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Import
-	stats, err := importer.ImportObservations(s.DB, matcher, projectID, header.Filename, obs, time.Now().UTC())
+	stats, err := importer.ImportXML(s.DB, matcher, projectID, header.Filename, file, time.Now().UTC())
 	if err != nil {
 		s.serverError(w, err)
 		return
@@ -215,6 +217,7 @@ func (s *Server) apiImportXML(w http.ResponseWriter, r *http.Request) {
 		"success":         true,
 		"filename":        header.Filename,
 		"hosts_imported":  stats.HostsFound,
+		"hosts_skipped":   stats.Skipped,
 		"ports_imported":  stats.PortsFound,
 		"hosts_in_scope":  stats.InScope,
 		"hosts_out_scope": stats.OutScope,

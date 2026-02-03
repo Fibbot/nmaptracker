@@ -69,8 +69,8 @@ func runServe(args []string, out, errOut io.Writer) int {
 	defer database.Close()
 
 	server := web.NewServer(database)
-	addr := fmt.Sprintf(":%d", *port)
-	fmt.Fprintf(out, "listening on http://localhost:%d\n", *port)
+	addr := fmt.Sprintf("127.0.0.1:%d", *port)
+	fmt.Fprintf(out, "listening on http://127.0.0.1:%d\n", *port)
 	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
 		fmt.Fprintf(errOut, "serve: %v\n", err)
 		return 1
@@ -174,19 +174,13 @@ func runImport(args []string, out, errOut io.Writer) int {
 		return 1
 	}
 
-	obs, err := importer.ParseXMLFile(filePath)
-	if err != nil {
-		fmt.Fprintf(errOut, "parse xml: %v\n", err)
-		return 1
-	}
-
 	matcher, err := scope.NewMatcher(nil)
 	if err != nil {
 		fmt.Fprintf(errOut, "scope matcher: %v\n", err)
 		return 1
 	}
 
-	if _, err := importer.ImportObservations(database, matcher, project.ID, filepath.Base(filePath), obs, time.Now().UTC()); err != nil {
+	if _, err := importer.ImportXMLFile(database, matcher, project.ID, filePath, time.Now().UTC()); err != nil {
 		fmt.Fprintf(errOut, "import: %v\n", err)
 		return 1
 	}

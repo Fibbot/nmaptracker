@@ -78,7 +78,11 @@ function renderHosts(hosts, projectId) {
 
     if (!hosts || hosts.length === 0) {
         const tr = document.createElement('tr');
-        tr.innerHTML = '<td colspan="5" style="text-align: center;">No hosts found</td>';
+        const td = document.createElement('td');
+        td.colSpan = 5;
+        td.style.textAlign = 'center';
+        td.textContent = 'No hosts found';
+        tr.appendChild(td);
         tbody.appendChild(tr);
         return;
     }
@@ -109,13 +113,13 @@ function renderHosts(hosts, projectId) {
         divStatus.className = 'status-summary';
 
         // Compact badges logic
-        if (h.Scanned) divStatus.innerHTML += `<span class="mini-badge" style="background:rgba(100,116,139,0.2); color:#94a3b8">S:${h.Scanned}</span>`;
-        if (h.Flagged) divStatus.innerHTML += `<span class="mini-badge" style="background:rgba(245,158,11,0.15); color:#fbbf24">F:${h.Flagged}</span>`;
-        if (h.InProgress) divStatus.innerHTML += `<span class="mini-badge" style="background:rgba(34,211,238,0.15); color:#22d3ee">IP:${h.InProgress}</span>`;
-        if (h.Done) divStatus.innerHTML += `<span class="mini-badge" style="background:rgba(34,197,94,0.15); color:#4ade80">D:${h.Done}</span>`;
-        if (h.ParkingLot) divStatus.innerHTML += `<span class="mini-badge" style="background:rgba(139,92,246,0.15); color:#a78bfa">P:${h.ParkingLot}</span>`;
+        if (h.Scanned) divStatus.appendChild(buildMiniBadge(`S:${h.Scanned}`, 'rgba(100,116,139,0.2)', '#94a3b8'));
+        if (h.Flagged) divStatus.appendChild(buildMiniBadge(`F:${h.Flagged}`, 'rgba(245,158,11,0.15)', '#fbbf24'));
+        if (h.InProgress) divStatus.appendChild(buildMiniBadge(`IP:${h.InProgress}`, 'rgba(34,211,238,0.15)', '#22d3ee'));
+        if (h.Done) divStatus.appendChild(buildMiniBadge(`D:${h.Done}`, 'rgba(34,197,94,0.15)', '#4ade80'));
+        if (h.ParkingLot) divStatus.appendChild(buildMiniBadge(`P:${h.ParkingLot}`, 'rgba(139,92,246,0.15)', '#a78bfa'));
 
-        if (!divStatus.innerHTML) divStatus.textContent = '-';
+        if (!divStatus.children.length) divStatus.textContent = '-';
         tdStatus.appendChild(divStatus);
 
         const tdActions = document.createElement('td');
@@ -138,6 +142,15 @@ function renderHosts(hosts, projectId) {
 
         tbody.appendChild(tr);
     });
+}
+
+function buildMiniBadge(text, background, color) {
+    const span = document.createElement('span');
+    span.className = 'mini-badge';
+    span.style.background = background;
+    span.style.color = color;
+    span.textContent = text;
+    return span;
 }
 
 function updatePagination() {

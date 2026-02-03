@@ -18,7 +18,7 @@ Vibecoded as hell testing out Antigravity.
 
 1.  **Build**: `make build`
 2.  **Serve**: `./nmap-tracker serve`
-3.  **View**: Open `http://localhost:8080`
+3.  **View**: Open `http://127.0.0.1:8080`
 
 ## TL;DR (CLI - If Masochistic)
 
@@ -101,6 +101,8 @@ nmap-tracker serve [--port <port>] [--db <path>]
 *   **Flags**:
     *   `--port`: Port to listen on (default: `8080`).
     *   `--db`: Path to SQLite DB (default: `nmap-tracker.db`).
+
+**Security Note:** The server binds to `127.0.0.1` only and includes a same-origin guard for browser requests. CLI/curl requests without an `Origin` header are still allowed.
 
 ### 4. `export`
 Export project data to a file.

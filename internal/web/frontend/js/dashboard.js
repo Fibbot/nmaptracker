@@ -114,15 +114,30 @@ function renderScopeRules(rules) {
     }
 
     empty.style.display = 'none';
-    list.innerHTML = rules.map(rule => `
-        <li class="scope-rule-item">
-            <span>
-                ${escapeHtml(rule.Definition)}
-                <span class="rule-type">${rule.Type}</span>
-            </span>
-            <button class="delete-btn" onclick="deleteScopeRule(${rule.ID})" title="Remove">×</button>
-        </li>
-    `).join('');
+    list.innerHTML = '';
+    rules.forEach(rule => {
+        const item = document.createElement('li');
+        item.className = 'scope-rule-item';
+
+        const textWrap = document.createElement('span');
+        const defText = document.createElement('span');
+        defText.textContent = rule.Definition;
+        const typeText = document.createElement('span');
+        typeText.className = 'rule-type';
+        typeText.textContent = rule.Type;
+        textWrap.appendChild(defText);
+        textWrap.appendChild(typeText);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-btn';
+        deleteBtn.title = 'Remove';
+        deleteBtn.textContent = '×';
+        deleteBtn.addEventListener('click', () => deleteScopeRule(rule.ID));
+
+        item.appendChild(textWrap);
+        item.appendChild(deleteBtn);
+        list.appendChild(item);
+    });
 }
 
 async function addScopeRules() {

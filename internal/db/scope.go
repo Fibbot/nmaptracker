@@ -103,3 +103,15 @@ func (db *DB) DeleteScopeDefinition(id int64) error {
 	}
 	return nil
 }
+
+// DeleteScopeDefinitionForProject removes a scope definition scoped to a project.
+func (db *DB) DeleteScopeDefinitionForProject(projectID, scopeID int64) error {
+	res, err := db.Exec(`DELETE FROM scope_definition WHERE id = ? AND project_id = ?`, scopeID, projectID)
+	if err != nil {
+		return fmt.Errorf("delete scope_definition scoped: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}

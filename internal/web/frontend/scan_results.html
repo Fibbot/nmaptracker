@@ -42,6 +42,7 @@
                         <option value="flagged">Flagged</option>
                         <option value="in_progress">In Progress</option>
                         <option value="done">Done</option>
+                        <option value="parking_lot">Parking Lot</option>
                     </select>
                     <button class="btn btn-secondary" id="bulk-done-btn" style="margin-right: 10px;">Mark Displayed as
                         Done</button>
@@ -89,6 +90,12 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+
+        <div class="pagination">
+            <button id="prev-btn" class="pagination-btn" disabled>Previous</button>
+            <span id="page-info" class="pagination-info">Page 1</span>
+            <button id="next-btn" class="pagination-btn" disabled>Next</button>
         </div>
     </div>
 

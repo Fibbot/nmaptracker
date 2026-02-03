@@ -1,0 +1,7 @@
+BEGIN TRANSACTION;
+
+ALTER TABLE host ADD COLUMN ip_int INTEGER;
+
+CREATE INDEX IF NOT EXISTS idx_host_ip_int ON host(ip_int);
+
+COMMIT;

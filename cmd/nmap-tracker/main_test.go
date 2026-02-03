@@ -41,10 +41,10 @@ func TestImportCLI(t *testing.T) {
 		t.Fatalf("projects create exit %d", exit)
 	}
 
-	// Locate sampleNmap.xml fixture at repo root.
+	// Locate sampleNmap1.xml fixture at repo root.
 	_, filename, _, _ := runtime.Caller(0)
 	root := filepath.Dir(filepath.Dir(filepath.Dir(filename)))
-	samplePath := filepath.Join(root, "sampleNmap.xml")
+	samplePath := filepath.Join(root, "sampleNmap1.xml")
 	if _, err := os.Stat(samplePath); err != nil {
 		t.Fatalf("sample fixture missing: %v", err)
 	}

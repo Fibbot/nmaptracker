@@ -27,8 +27,8 @@ type hostListQuery struct {
 }
 
 // ListHostsWithSummary returns hosts with aggregated port counts for list view.
-func (db *DB) ListHostsWithSummary(projectID int64, inScope *bool, statusFilters []string, sortBy, sortDir string) ([]HostListItem, error) {
-	query, err := buildHostListQuery(projectID, inScope, statusFilters, sortBy, sortDir)
+func (db *DB) ListHostsWithSummary(projectID int64, inScope *bool, statusFilters []string, sortBy, sortDir string, subnetStart, subnetEnd *int64) ([]HostListItem, error) {
+	query, err := buildHostListQuery(projectID, inScope, statusFilters, sortBy, sortDir, subnetStart, subnetEnd)
 	if err != nil {
 		return nil, err
 	}
@@ -36,8 +36,8 @@ func (db *DB) ListHostsWithSummary(projectID int64, inScope *bool, statusFilters
 }
 
 // ListHostsWithSummaryPaged returns hosts with aggregated port counts and total count.
-func (db *DB) ListHostsWithSummaryPaged(projectID int64, inScope *bool, statusFilters []string, sortBy, sortDir string, limit, offset int) ([]HostListItem, int, error) {
-	query, err := buildHostListQuery(projectID, inScope, statusFilters, sortBy, sortDir)
+func (db *DB) ListHostsWithSummaryPaged(projectID int64, inScope *bool, statusFilters []string, sortBy, sortDir string, subnetStart, subnetEnd *int64, limit, offset int) ([]HostListItem, int, error) {
+	query, err := buildHostListQuery(projectID, inScope, statusFilters, sortBy, sortDir, subnetStart, subnetEnd)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -52,7 +52,7 @@ func (db *DB) ListHostsWithSummaryPaged(projectID int64, inScope *bool, statusFi
 	return items, total, nil
 }
 
-func buildHostListQuery(projectID int64, inScope *bool, statusFilters []string, sortBy, sortDir string) (hostListQuery, error) {
+func buildHostListQuery(projectID int64, inScope *bool, statusFilters []string, sortBy, sortDir string, subnetStart, subnetEnd *int64) (hostListQuery, error) {
 	var where []string
 	var args []any
 
@@ -66,6 +66,11 @@ func buildHostListQuery(projectID int64, inScope *bool, statusFilters []string, 
 		} else {
 			args = append(args, 0)
 		}
+	}
+
+	if subnetStart != nil && subnetEnd != nil {
+		where = append(where, "h.ip_int BETWEEN ? AND ?")
+		args = append(args, *subnetStart, *subnetEnd)
 	}
 
 	orderBy := "h.ip_address"

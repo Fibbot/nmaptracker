@@ -73,23 +73,7 @@ func parseXML(r io.Reader) (Observations, error) {
 
 	var obs Observations
 	for _, h := range run.Hosts {
-		host := HostObservation{
-			IPAddress: firstIPv4(h.Addresses),
-			Hostname:  firstHostname(h.Hostnames),
-			OSGuess:   firstOS(h.OS),
-		}
-		for _, p := range h.Ports {
-			host.Ports = append(host.Ports, PortObservation{
-				PortNumber:   p.PortID,
-				Protocol:     strings.ToLower(p.Protocol),
-				State:        strings.ToLower(p.State.State),
-				Service:      p.Service.Name,
-				Version:      p.Service.Version,
-				Product:      p.Service.Product,
-				ExtraInfo:    p.Service.ExtraInfo,
-				ScriptOutput: joinScripts(p.Scripts),
-			})
-		}
+		host := observationFromHost(h)
 		obs.Hosts = append(obs.Hosts, host)
 	}
 	return obs, nil
@@ -134,4 +118,25 @@ func joinScripts(scripts []nmapScript) string {
 		}
 	}
 	return strings.Join(parts, "\n")
+}
+
+func observationFromHost(h nmapHost) HostObservation {
+	host := HostObservation{
+		IPAddress: firstIPv4(h.Addresses),
+		Hostname:  firstHostname(h.Hostnames),
+		OSGuess:   firstOS(h.OS),
+	}
+	for _, p := range h.Ports {
+		host.Ports = append(host.Ports, PortObservation{
+			PortNumber:   p.PortID,
+			Protocol:     strings.ToLower(p.Protocol),
+			State:        strings.ToLower(p.State.State),
+			Service:      p.Service.Name,
+			Version:      p.Service.Version,
+			Product:      p.Service.Product,
+			ExtraInfo:    p.Service.ExtraInfo,
+			ScriptOutput: joinScripts(p.Scripts),
+		})
+	}
+	return host
 }

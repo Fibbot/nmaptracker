@@ -153,33 +153,31 @@ func (s *Server) apiListHosts(w http.ResponseWriter, r *http.Request) {
 	page, pageSize := parsePagination(filters.Page, filters.Size)
 	offset := (page - 1) * pageSize
 
-	items, total, err := s.DB.ListHostsWithSummaryPaged(projectID, inScope, statusFilters, sortBy, dir, pageSize, offset)
-	if err != nil {
-		s.serverError(w, err)
-		return
-	}
-
-	// Manual Subnet Filtering (if needed, same as before)
-	// Note: Pagination might be off if we filter in memory after paging in DB.
-	// For MVP, if subnet is set, ideally we'd filter in DB or fetch all.
-	// The previous implementation fetched paged results THEN filtered, which is buggy for pagination.
-	// I'll keep the logic as is but note it's imperfect.
+	var subnetStart *int64
+	var subnetEnd *int64
 	if filters.Subnet != "" {
 		prefix, err := netip.ParsePrefix(filters.Subnet)
 		if err != nil {
 			s.badRequest(w, fmt.Errorf("invalid subnet"))
 			return
 		}
-		filtered := items[:0]
-		for _, item := range items {
-			addr, err := netip.ParseAddr(item.IPAddress)
-			if err == nil && prefix.Contains(addr) {
-				filtered = append(filtered, item)
-			}
+		if prefix.Addr().Is6() {
+			s.badRequest(w, fmt.Errorf("ipv6 subnets are not supported"))
+			return
 		}
-		items = filtered
-		// Adjust total? Hard to know true total without full scan.
-		// We'll leave total as is or set to len(items) if it was a full fetch (which it isn't).
+		start, end, err := ipv4PrefixRange(prefix)
+		if err != nil {
+			s.badRequest(w, fmt.Errorf("invalid subnet"))
+			return
+		}
+		subnetStart = &start
+		subnetEnd = &end
+	}
+
+	items, total, err := s.DB.ListHostsWithSummaryPaged(projectID, inScope, statusFilters, sortBy, dir, subnetStart, subnetEnd, pageSize, offset)
+	if err != nil {
+		s.serverError(w, err)
+		return
 	}
 
 	response := struct {
@@ -280,31 +278,39 @@ func (s *Server) apiListProjectPorts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ports, err := s.DB.ListProjectPorts(projectID)
+	query := r.URL.Query()
+	page, pageSize := parsePagination(query.Get("page"), query.Get("page_size"))
+	offset := (page - 1) * pageSize
+
+	stateFilters, err := parseStateFilters(query.Get("state"))
+	if err != nil {
+		s.badRequest(w, err)
+		return
+	}
+	statusFilters, err := parseWorkStatusFilters(query.Get("status"))
+	if err != nil {
+		s.badRequest(w, err)
+		return
+	}
+
+	ports, total, err := s.DB.ListProjectPortsPaged(projectID, stateFilters, statusFilters, pageSize, offset)
 	if err != nil {
 		s.serverError(w, err)
 		return
 	}
 
-	// Work Status Filtering
-	statusRaw := r.URL.Query().Get("status")
-	if statusRaw != "" {
-		filters := strings.Split(statusRaw, ",")
-		lookup := make(map[string]bool)
-		for _, f := range filters {
-			lookup[strings.TrimSpace(f)] = true
-		}
-
-		filtered := ports[:0]
-		for _, p := range ports {
-			if lookup[p.WorkStatus] {
-				filtered = append(filtered, p)
-			}
-		}
-		ports = filtered
+	response := struct {
+		Items    []db.ProjectPort `json:"items"`
+		Total    int              `json:"total"`
+		Page     int              `json:"page"`
+		PageSize int              `json:"page_size"`
+	}{
+		Items:    ports,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
 	}
-
-	s.jsonResponse(w, ports, http.StatusOK)
+	s.jsonResponse(w, response, http.StatusOK)
 }
 
 func (s *Server) apiUpdateHostNotes(w http.ResponseWriter, r *http.Request) {
@@ -449,7 +455,7 @@ func (s *Server) apiHostBulkStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiProjectBulkPortStatus(w http.ResponseWriter, r *http.Request) {
-	_, err := parseProjectID(r)
+	projectID, err := parseProjectID(r)
 	if err != nil {
 		s.badRequest(w, err)
 		return
@@ -475,7 +481,7 @@ func (s *Server) apiProjectBulkPortStatus(w http.ResponseWriter, r *http.Request
 	// or we rely on the fact that an ID collision is unlikely to affect another project maliciously in this single user context.
 	// For strict correctness, the DB query could join host/project, but the generic ID update is sufficient for now.
 
-	if err := s.DB.BulkUpdatePortStatuses(req.IDs, req.Status); err != nil {
+	if err := s.DB.BulkUpdatePortStatusesForProject(projectID, req.IDs, req.Status); err != nil {
 		s.serverError(w, err)
 		return
 	}
@@ -592,7 +598,7 @@ func parseProjectID(r *http.Request) (int64, error) {
 
 func isValidWorkStatus(status string) bool {
 	switch status {
-	case "scanned", "flagged", "in_progress", "done":
+	case "scanned", "flagged", "in_progress", "done", "parking_lot":
 		return true
 	default:
 		return false
@@ -686,6 +692,70 @@ func parsePortStates(values []string) (map[string]bool, error) {
 		return nil, nil
 	}
 	return out, nil
+}
+
+func parseStateFilters(raw string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	lookup, err := parsePortStates(parts)
+	if err != nil {
+		return nil, err
+	}
+	if len(lookup) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(lookup))
+	for key := range lookup {
+		out = append(out, key)
+	}
+	return out, nil
+}
+
+func parseWorkStatusFilters(raw string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	allowed := map[string]bool{
+		"scanned":     true,
+		"flagged":     true,
+		"in_progress": true,
+		"done":        true,
+		"parking_lot": true,
+	}
+	var out []string
+	for _, part := range parts {
+		val := strings.ToLower(strings.TrimSpace(part))
+		if val == "" {
+			continue
+		}
+		if !allowed[val] {
+			return nil, fmt.Errorf("invalid status")
+		}
+		out = append(out, val)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+func ipv4PrefixRange(prefix netip.Prefix) (int64, int64, error) {
+	if !prefix.Addr().Is4() {
+		return 0, 0, fmt.Errorf("ipv4 only")
+	}
+	masked := prefix.Masked().Addr()
+	octets := masked.As4()
+	start := uint64(octets[0])<<24 | uint64(octets[1])<<16 | uint64(octets[2])<<8 | uint64(octets[3])
+	hostBits := 32 - prefix.Bits()
+	if hostBits < 0 || hostBits > 32 {
+		return 0, 0, fmt.Errorf("invalid prefix length")
+	}
+	size := uint64(1) << uint(hostBits)
+	end := start + size - 1
+	return int64(start), int64(end), nil
 }
 
 func parsePagination(pageRaw, sizeRaw string) (int, int) {

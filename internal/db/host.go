@@ -8,17 +8,22 @@ import (
 // UpsertHost inserts or updates a host keyed by (project_id, ip_address).
 func (db *DB) UpsertHost(h Host) (Host, error) {
 	var out Host
+	var ipInt any
+	if value, ok := ipv4ToInt(h.IPAddress); ok {
+		ipInt = value
+	}
 	err := db.QueryRow(
-		`INSERT INTO host (project_id, ip_address, hostname, os_guess, in_scope, notes)
-		 VALUES (?, ?, ?, ?, ?, ?)
+		`INSERT INTO host (project_id, ip_address, hostname, os_guess, in_scope, notes, ip_int)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(project_id, ip_address) DO UPDATE SET
 		   hostname=excluded.hostname,
 		   os_guess=excluded.os_guess,
 		   in_scope=excluded.in_scope,
 		   notes=excluded.notes,
+		   ip_int=excluded.ip_int,
 		   updated_at=CURRENT_TIMESTAMP
 		 RETURNING id, project_id, ip_address, hostname, os_guess, in_scope, notes, created_at, updated_at`,
-		h.ProjectID, h.IPAddress, h.Hostname, h.OSGuess, h.InScope, h.Notes,
+		h.ProjectID, h.IPAddress, h.Hostname, h.OSGuess, h.InScope, h.Notes, ipInt,
 	).Scan(&out.ID, &out.ProjectID, &out.IPAddress, &out.Hostname, &out.OSGuess, &out.InScope, &out.Notes, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		return Host{}, fmt.Errorf("upsert host: %w", err)

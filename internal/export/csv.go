@@ -24,21 +24,28 @@ func ExportProjectCSV(database *db.DB, projectID int64, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("list hosts: %w", err)
 	}
+	ports, err := database.ListPortsByProject(projectID)
+	if err != nil {
+		return fmt.Errorf("list ports: %w", err)
+	}
+
+	hostByID := make(map[int64]db.Host, len(hosts))
+	for _, host := range hosts {
+		hostByID[host.ID] = host
+	}
 
 	writer := csv.NewWriter(w)
 	if err := writer.Write(csvHeader()); err != nil {
 		return fmt.Errorf("write header: %w", err)
 	}
 
-	for _, host := range hosts {
-		ports, err := database.ListPorts(host.ID)
-		if err != nil {
-			return fmt.Errorf("list ports: %w", err)
+	for _, port := range ports {
+		host, ok := hostByID[port.HostID]
+		if !ok {
+			continue
 		}
-		for _, port := range ports {
-			if err := writer.Write(csvRow(project, host, port)); err != nil {
-				return fmt.Errorf("write row: %w", err)
-			}
+		if err := writer.Write(csvRow(project, host, port)); err != nil {
+			return fmt.Errorf("write row: %w", err)
 		}
 	}
 

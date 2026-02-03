@@ -105,20 +105,21 @@ func ExportProjectJSON(database *db.DB, projectID int64, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("list hosts: %w", err)
 	}
+	ports, err := database.ListPortsByProject(projectID)
+	if err != nil {
+		return fmt.Errorf("list ports: %w", err)
+	}
+
+	portsByHost := make(map[int64][]PortInfo, len(hosts))
+	for _, port := range ports {
+		portsByHost[port.HostID] = append(portsByHost[port.HostID], toPortInfo(port))
+	}
 
 	exportHosts := make([]HostExport, 0, len(hosts))
 	for _, host := range hosts {
-		ports, err := database.ListPorts(host.ID)
-		if err != nil {
-			return fmt.Errorf("list ports: %w", err)
-		}
-		exportPorts := make([]PortInfo, 0, len(ports))
-		for _, port := range ports {
-			exportPorts = append(exportPorts, toPortInfo(port))
-		}
 		exportHosts = append(exportHosts, HostExport{
 			Host:  toHostInfo(host),
-			Ports: exportPorts,
+			Ports: portsByHost[host.ID],
 		})
 	}
 

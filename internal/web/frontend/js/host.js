@@ -33,10 +33,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('host-title').textContent = `${host.IPAddress} (${host.Hostname || 'No Hostname'})`;
 
         const meta = document.getElementById('host-meta');
-        meta.innerHTML = `
-            <span class="badge ${host.InScope ? 'badge-yes' : 'badge-no'}">${host.InScope ? 'In Scope' : 'Out of Scope'}</span>
-            <span style="color: var(--text-muted); margin-left: 10px;">${host.OSGuess || 'OS Unknown'}</span>
-        `;
+        meta.textContent = '';
+        const scopeBadge = document.createElement('span');
+        scopeBadge.className = `badge ${host.InScope ? 'badge-yes' : 'badge-no'}`;
+        scopeBadge.textContent = host.InScope ? 'In Scope' : 'Out of Scope';
+        const osGuess = document.createElement('span');
+        osGuess.style.color = 'var(--text-muted)';
+        osGuess.style.marginLeft = '10px';
+        osGuess.textContent = host.OSGuess || 'OS Unknown';
+        meta.appendChild(scopeBadge);
+        meta.appendChild(osGuess);
 
         document.getElementById('host-notes').value = host.Notes || '';
         let lastHostNotes = host.Notes || '';
@@ -137,7 +143,13 @@ function renderPorts(allPorts, projectId, hostId) {
     currentFilteredPorts = ports || [];
 
     if (!ports || ports.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No ports found matching filters</td></tr>';
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 5;
+        td.style.textAlign = 'center';
+        td.textContent = 'No ports found matching filters';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
         return;
     }
 
@@ -145,37 +157,102 @@ function renderPorts(allPorts, projectId, hostId) {
         const tr = document.createElement('tr');
 
         // Port/Proto
-        tr.innerHTML = `
-            <td>${p.PortNumber}/${p.Protocol}</td>
-            <td><span class="badge badge-${p.State}">${p.State}</span></td>
-            <td>
-                <div style="font-weight: 500">${p.Service}</div>
-                <div style="font-size: 12px; color: var(--text-dim);">${p.Product || ''} ${p.Version || ''}</div>
-                ${p.ScriptOutput ? `
-                <div class="script-output-container">
-                    <div class="script-output-header" onclick="this.closest('.script-output-container').classList.toggle('open');" style="cursor:pointer;">
-                        <div class="flex-row">
-                             <span class="toggle-icon" style="font-size: 10px; color: var(--text-dim); margin-right: 6px;">▶</span>
-                             <span class="script-output-label">Script Output</span>
-                        </div>
-                        <div class="script-output-actions" onclick="event.stopPropagation();">
-                            <button class="btn-icon" onclick="openModal('Script Output', this.closest('.script-output-container').querySelector('.script-output-content').textContent)" title="View Full">⤢</button>
-                            <button class="btn-icon" onclick="navigator.clipboard.writeText(this.closest('.script-output-container').querySelector('.script-output-content').textContent); showToast('Copied', 'success')" title="Copy">📋</button>
-                        </div>
-                    </div>
-                    <div class="script-output-body" style="display:none;">
-                        <pre class="script-output-content">${escapeHtml(p.ScriptOutput)}</pre>
-                    </div>
-                </div>
-                ` : ''}
-            </td>
-        `;
+        const tdPort = document.createElement('td');
+        tdPort.textContent = `${p.PortNumber}/${p.Protocol}`;
+
+        const tdState = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = `badge ${stateBadgeClass(p.State)}`;
+        badge.textContent = p.State;
+        tdState.appendChild(badge);
+
+        const tdService = document.createElement('td');
+        const svcName = document.createElement('div');
+        svcName.style.fontWeight = '500';
+        svcName.textContent = p.Service || '';
+        const svcMeta = document.createElement('div');
+        svcMeta.style.fontSize = '12px';
+        svcMeta.style.color = 'var(--text-dim)';
+        svcMeta.textContent = `${p.Product || ''} ${p.Version || ''}`.trim();
+        tdService.appendChild(svcName);
+        tdService.appendChild(svcMeta);
+
+        if (p.ScriptOutput) {
+            const container = document.createElement('div');
+            container.className = 'script-output-container';
+
+            const header = document.createElement('div');
+            header.className = 'script-output-header';
+            header.style.cursor = 'pointer';
+            header.addEventListener('click', () => {
+                container.classList.toggle('open');
+            });
+
+            const left = document.createElement('div');
+            left.className = 'flex-row';
+            const toggleIcon = document.createElement('span');
+            toggleIcon.className = 'toggle-icon';
+            toggleIcon.style.fontSize = '10px';
+            toggleIcon.style.color = 'var(--text-dim)';
+            toggleIcon.style.marginRight = '6px';
+            toggleIcon.textContent = '▶';
+            const label = document.createElement('span');
+            label.className = 'script-output-label';
+            label.textContent = 'Script Output';
+            left.appendChild(toggleIcon);
+            left.appendChild(label);
+
+            const actions = document.createElement('div');
+            actions.className = 'script-output-actions';
+
+            const viewBtn = document.createElement('button');
+            viewBtn.className = 'btn-icon';
+            viewBtn.title = 'View Full';
+            viewBtn.textContent = '⤢';
+            viewBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openModal('Script Output', p.ScriptOutput);
+            });
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'btn-icon';
+            copyBtn.title = 'Copy';
+            copyBtn.textContent = '📋';
+            copyBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(p.ScriptOutput).then(() => {
+                    showToast('Copied', 'success');
+                });
+            });
+
+            actions.appendChild(viewBtn);
+            actions.appendChild(copyBtn);
+
+            header.appendChild(left);
+            header.appendChild(actions);
+
+            const body = document.createElement('div');
+            body.className = 'script-output-body';
+            body.style.display = 'none';
+            const pre = document.createElement('pre');
+            pre.className = 'script-output-content';
+            pre.textContent = p.ScriptOutput;
+            body.appendChild(pre);
+
+            container.appendChild(header);
+            container.appendChild(body);
+            tdService.appendChild(container);
+        }
+
+        tr.appendChild(tdPort);
+        tr.appendChild(tdState);
+        tr.appendChild(tdService);
 
         // Status Select
         const tdStatus = document.createElement('td');
         const select = document.createElement('select');
         select.style.width = '100%';
-        ['scanned', 'flagged', 'in_progress', 'done'].forEach(s => {
+        ['scanned', 'flagged', 'in_progress', 'done', 'parking_lot'].forEach(s => {
             const opt = document.createElement('option');
             opt.value = s;
             opt.textContent = s.replace('_', ' ').toUpperCase();
@@ -245,28 +322,6 @@ function renderPorts(allPorts, projectId, hostId) {
     });
 }
 
-// Global Modal Functions
-function openModal(title, content) {
-    document.getElementById('modal-title').textContent = title;
-    document.getElementById('modal-body').textContent = content; // Using textContent safe against XSS if already raw
-    document.getElementById('content-modal').style.display = 'flex';
-}
-
-function closeModal() {
-    document.getElementById('content-modal').style.display = 'none';
-}
-
-function copyModalContent() {
-    const content = document.getElementById('modal-body').textContent;
-    navigator.clipboard.writeText(content).then(() => {
-        showToast('Copied to clipboard', 'success');
-    });
-}
-
-window.openModal = openModal;
-window.closeModal = closeModal;
-window.copyModalContent = copyModalContent;
-
 function toggleHostNotes() {
     const content = document.getElementById('host-notes-content');
     const icon = document.getElementById('host-notes-toggle-icon');
@@ -279,3 +334,19 @@ function toggleHostNotes() {
     }
 }
 window.toggleHostNotes = toggleHostNotes;
+
+function stateBadgeClass(state) {
+    switch ((state || '').toLowerCase()) {
+        case 'open':
+            return 'badge-open';
+        case 'closed':
+            return 'badge-closed';
+        case 'filtered':
+        case 'open|filtered':
+        case 'closed|filtered':
+        case 'unfiltered':
+            return 'badge-filtered';
+        default:
+            return 'badge-filtered';
+    }
+}
