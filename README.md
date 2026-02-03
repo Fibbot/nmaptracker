@@ -1,6 +1,6 @@
 # Nmap Tracker
 
-Nmap Tracker is a lightweight, self-hosted tool for managing and visualizing Nmap scan results. It allows you to import Nmap XML reports, track host and port statuses over time, manage scopes, and collaborate on findings through a unified web interface or CLI.
+Nmap Tracker is a lightweight, self-hosted tool for managing and visualizing Nmap scan results. It allows you to import Nmap XML reports, track host and port statuses over time, and manage scope through a unified web interface or CLI.
 
 Vibecoded as hell testing out Antigravity.
 
