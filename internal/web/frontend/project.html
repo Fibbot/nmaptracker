@@ -43,6 +43,7 @@
                     Scans</a>
                 <a id="view-coverage-matrix-btn" class="btn btn-secondary" href="#" style="margin-left: 10px;">Coverage Matrix</a>
                 <a id="view-import-delta-btn" class="btn btn-secondary" href="#" style="margin-left: 10px;">Import Delta</a>
+                <a id="view-service-queues-btn" class="btn btn-secondary" href="#" style="margin-left: 10px;">Service Queues</a>
                 <div class="dropdown" style="margin-left: auto; position: relative;">
                     <button class="btn btn-secondary dropdown-toggle" onclick="toggleExportMenu()">Export ▼</button>
                     <div id="export-menu" class="dropdown-menu" style="display: none;">
@@ -54,174 +55,265 @@
 
         <div id="error-msg" class="error"></div>
 
-        <!-- Import Scan -->
-        <div class="card" style="margin-top: 24px;">
-            <div class="card-header">
-                <h3 class="card-title">Import Nmap Scan</h3>
-            </div>
-            <div class="import-section">
-                <p class="text-muted">Upload an Nmap XML file to import hosts and ports into this project.</p>
-
-                <div class="import-dropzone" id="import-dropzone">
-                    <input type="file" id="import-file" accept=".xml" style="display: none;">
-                    <button class="dropzone-content btn-secondary" style="background:none; border:none;"
-                        onclick="document.getElementById('import-file').click();">
-                        <span class="dropzone-icon">📄</span>
-                        <p>Drag & drop an XML file here, or <span
-                                style="color:var(--accent); text-decoration:underline;">browse</span></p>
-                    </button>
+        <div id="dashboard-sections" class="dashboard-sections">
+            <section class="card dashboard-section" data-section-id="import_scan" draggable="true">
+                <div class="card-header section-header">
+                    <h3 class="card-title">Import Nmap Scan</h3>
+                    <div class="section-header-actions">
+                        <span class="section-drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</span>
+                        <button type="button" class="section-collapse-toggle" data-section-toggle aria-label="Collapse section">▼</button>
+                    </div>
                 </div>
+                <div class="section-content" data-section-content>
+                    <div class="import-section">
+                        <p class="text-muted">Upload an Nmap XML file to import hosts and ports into this project.</p>
 
-                <div id="import-status" class="import-status" style="display: none;">
-                    <span id="import-filename"></span>
-                    <button class="btn btn-primary" onclick="uploadFile()">Import</button>
-                    <button class="btn btn-secondary" onclick="clearImport()">Cancel</button>
+                        <div class="import-dropzone" id="import-dropzone">
+                            <input type="file" id="import-file" accept=".xml" style="display: none;">
+                            <button class="dropzone-content btn-secondary" style="background:none; border:none;"
+                                onclick="document.getElementById('import-file').click();">
+                                <span class="dropzone-icon">📄</span>
+                                <p>Drag & drop an XML file here, or <span
+                                        style="color:var(--accent); text-decoration:underline;">browse</span></p>
+                            </button>
+                        </div>
+
+                        <div id="import-status" class="import-status" style="display: none;">
+                            <span id="import-filename"></span>
+                            <button class="btn btn-primary" onclick="uploadFile()">Import</button>
+                            <button class="btn btn-secondary" onclick="clearImport()">Cancel</button>
+                        </div>
+
+                        <div id="import-progress" class="import-progress" style="display: none;">
+                            <span>Importing...</span>
+                        </div>
+                    </div>
                 </div>
+            </section>
 
-                <div id="import-progress" class="import-progress" style="display: none;">
-                    <span>Importing...</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Scope Definition -->
-        <div class="card">
-            <div class="card-header" style="cursor: pointer;" onclick="toggleScope()">
-                <h3 class="card-title">Scope Definition</h3>
-                <span id="scope-toggle-icon">▼</span>
-            </div>
-
-            <div id="scope-content" class="scope-content truncated" style="display:none;">
-                <!-- Input area -->
-                <div class="scope-input-section">
-                    <label for="scope-input">Add IPs or CIDR blocks (one per line)</label>
-                    <textarea id="scope-input" rows="4" placeholder="10.0.0.0/24&#10;192.168.1.50"></textarea>
-                    <div class="scope-actions">
-                        <button class="btn btn-primary" onclick="addScopeRules()">Add to Scope</button>
+            <section class="card dashboard-section" data-section-id="scope_definition" draggable="true">
+                <div class="card-header section-header">
+                    <h3 class="card-title">Scope Definition</h3>
+                    <div class="section-header-actions">
+                        <span class="section-drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</span>
+                        <button type="button" class="section-collapse-toggle" data-section-toggle aria-label="Collapse section">▼</button>
                     </div>
                 </div>
 
-                <!-- Current rules -->
-                <div class="scope-rules-section">
-                    <div class="scope-rules-header">
-                        <span class="label">Current Scope Rules</span>
-                        <button class="btn btn-secondary" onclick="reEvaluateScope()">Re-evaluate Hosts</button>
+                <div id="scope-content" class="scope-content section-content" data-section-content>
+                    <div class="scope-input-section">
+                        <label for="scope-input">Add IPs or CIDR blocks (one per line)</label>
+                        <textarea id="scope-input" rows="4" placeholder="10.0.0.0/24&#10;192.168.1.50"></textarea>
+                        <div class="scope-actions">
+                            <button class="btn btn-primary" onclick="addScopeRules()">Add to Scope</button>
+                        </div>
                     </div>
-                    <ul id="scope-rules-list" class="scope-rules-list">
-                        <!-- Populated by JS -->
-                    </ul>
-                    <p id="scope-empty" class="text-muted" style="display: none;">
-                        No scope rules defined. All hosts will be considered in-scope.
+
+                    <div class="scope-rules-section">
+                        <div class="scope-rules-header">
+                            <span class="label">Current Scope Rules</span>
+                            <button class="btn btn-secondary" onclick="reEvaluateScope()">Re-evaluate Hosts</button>
+                        </div>
+                        <ul id="scope-rules-list" class="scope-rules-list"></ul>
+                        <p id="scope-empty" class="text-muted" style="display: none;">
+                            No scope rules defined. All hosts will be considered in-scope.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card dashboard-section" data-section-id="import_intents" draggable="true">
+                <div class="card-header section-header">
+                    <h3 class="card-title">Import Intents</h3>
+                    <div class="section-header-actions">
+                        <button id="refresh-import-intents-btn" class="btn btn-secondary">Refresh</button>
+                        <span class="section-drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</span>
+                        <button type="button" class="section-collapse-toggle" data-section-toggle aria-label="Collapse section">▼</button>
+                    </div>
+                </div>
+                <div class="section-content" data-section-content>
+                    <p class="text-muted" style="margin-top: 0;">
+                        Milestone queues are driven by import intents. Set intents on each import to mark scan coverage.
+                    </p>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 90px;">Import ID</th>
+                                    <th style="width: 210px;">Time</th>
+                                    <th>Filename</th>
+                                    <th style="min-width: 360px;">Intents</th>
+                                    <th style="width: 90px;">Save</th>
+                                </tr>
+                            </thead>
+                            <tbody id="import-intents-body">
+                                <tr>
+                                    <td colspan="5" class="text-muted" style="text-align: center;">Loading imports...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card dashboard-section" data-section-id="hosts_workflow" draggable="true">
+                <div class="card-header section-header">
+                    <h3 class="card-title">Hosts & Workflow</h3>
+                    <div class="section-header-actions">
+                        <span class="section-drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</span>
+                        <button type="button" class="section-collapse-toggle" data-section-toggle aria-label="Collapse section">▼</button>
+                    </div>
+                </div>
+                <div class="section-content" data-section-content>
+                    <div class="stats-section">
+                        <div class="stats-card">
+                            <div class="stats-card-title">Hosts</div>
+                            <div class="stats-grid">
+                                <a id="link-total-hosts" href="#" class="stat-item clickable">
+                                    <span class="stat-label">Total</span>
+                                    <span class="stat-value" id="stat-total">0</span>
+                                </a>
+                                <a id="link-in-scope" href="#" class="stat-item clickable">
+                                    <span class="stat-label">In Scope</span>
+                                    <span class="stat-value" id="stat-in-scope">0</span>
+                                </a>
+                                <a id="link-out-scope" href="#" class="stat-item clickable">
+                                    <span class="stat-label">Out of Scope</span>
+                                    <span class="stat-value" id="stat-out-scope">0</span>
+                                </a>
+                            </div>
+                        </div>
+
+                        <div class="stats-card">
+                            <div class="stats-card-title">Workflow</div>
+                            <div class="stats-grid">
+                                <a id="link-wf-scanned" href="#" class="stat-item clickable">
+                                    <span class="stat-label">Scanned</span>
+                                    <span class="stat-value" id="stat-scanned">0</span>
+                                </a>
+                                <a id="link-wf-flagged" href="#" class="stat-item clickable">
+                                    <span class="stat-label">Flagged</span>
+                                    <span class="stat-value" id="stat-flagged">0</span>
+                                </a>
+                                <a id="link-wf-in-progress" href="#" class="stat-item clickable">
+                                    <span class="stat-label">In Progress</span>
+                                    <span class="stat-value" id="stat-in-progress">0</span>
+                                </a>
+                                <a id="link-wf-done" href="#" class="stat-item clickable">
+                                    <span class="stat-label">Done</span>
+                                    <span class="stat-value" id="stat-done">0</span>
+                                </a>
+                            </div>
+
+                            <div class="progress-container">
+                                <div class="progress-label">
+                                    <span>Completion (In-Scope)</span>
+                                    <span id="progress-percent">0%</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card dashboard-section" data-section-id="service_campaign_queues" draggable="true">
+                <div class="card-header section-header">
+                    <h3 class="card-title">Service Campaign Queues</h3>
+                    <div class="section-header-actions">
+                        <span class="section-drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</span>
+                        <button type="button" class="section-collapse-toggle" data-section-toggle aria-label="Collapse section">▼</button>
+                    </div>
+                </div>
+                <div class="section-content" data-section-content>
+                    <div class="flex-row" style="gap: 10px; flex-wrap: wrap;">
+                        <a id="queue-smb-btn" class="btn btn-secondary" href="#">SMB</a>
+                        <a id="queue-ldap-btn" class="btn btn-secondary" href="#">LDAP</a>
+                        <a id="queue-rdp-btn" class="btn btn-secondary" href="#">RDP</a>
+                        <a id="queue-http-btn" class="btn btn-secondary" href="#">HTTP</a>
+                    </div>
+                    <p class="text-muted" style="margin-top: 12px;">
+                        Use these quick pivots to jump into host-grouped campaign queues.
                     </p>
                 </div>
-            </div>
-        </div>
+            </section>
 
-        <div class="stats-section">
-            <!-- Hosts Card -->
-            <div class="stats-card">
-                <div class="stats-card-title">Hosts</div>
-                <div class="stats-grid">
-                    <a id="link-total-hosts" href="#" class="stat-item clickable">
-                        <span class="stat-label">Total</span>
-                        <span class="stat-value" id="stat-total">0</span>
-                    </a>
-                    <a id="link-in-scope" href="#" class="stat-item clickable">
-                        <span class="stat-label">In Scope</span>
-                        <span class="stat-value" id="stat-in-scope">0</span>
-                    </a>
-                    <a id="link-out-scope" href="#" class="stat-item clickable">
-                        <span class="stat-label">Out of Scope</span>
-                        <span class="stat-value" id="stat-out-scope">0</span>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Workflow Card -->
-            <div class="stats-card">
-                <div class="stats-card-title">Workflow</div>
-                <div class="stats-grid">
-                    <a id="link-wf-scanned" href="#" class="stat-item clickable">
-                        <span class="stat-label">Scanned</span>
-                        <span class="stat-value" id="stat-scanned">0</span>
-                    </a>
-                    <a id="link-wf-flagged" href="#" class="stat-item clickable">
-                        <span class="stat-label">Flagged</span>
-                        <span class="stat-value" id="stat-flagged">0</span>
-                    </a>
-                    <a id="link-wf-in-progress" href="#" class="stat-item clickable">
-                        <span class="stat-label">In Progress</span>
-                        <span class="stat-value" id="stat-in-progress">0</span>
-                    </a>
-                    <a id="link-wf-done" href="#" class="stat-item clickable">
-                        <span class="stat-label">Done</span>
-                        <span class="stat-value" id="stat-done">0</span>
-                    </a>
-                </div>
-
-                <div class="progress-container">
-                    <div class="progress-label">
-                        <span>Completion (In-Scope)</span>
-                        <span id="progress-percent">0%</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+            <section class="card dashboard-section" data-section-id="expected_asset_baseline" draggable="true">
+                <div class="card-header section-header">
+                    <h3 class="card-title">Expected Asset Baseline</h3>
+                    <div class="section-header-actions">
+                        <button class="btn btn-secondary" onclick="evaluateBaseline()">Evaluate</button>
+                        <span class="section-drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</span>
+                        <button type="button" class="section-collapse-toggle" data-section-toggle aria-label="Collapse section">▼</button>
                     </div>
                 </div>
-            </div>
-        </div>
+                <div class="section-content" data-section-content>
+                    <div class="scope-input-section">
+                        <label for="baseline-input">Add expected IPs or CIDR blocks (one per line)</label>
+                        <textarea id="baseline-input" rows="4" placeholder="10.0.0.0/24&#10;10.0.1.25"></textarea>
+                        <div class="scope-actions">
+                            <button class="btn btn-primary" onclick="addBaseline()">Add Baseline Definitions</button>
+                        </div>
+                    </div>
 
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">Gap Dashboard</h3>
-                <button class="btn btn-secondary" onclick="loadGapDashboard()">Refresh Gaps</button>
-            </div>
+                    <div class="scope-rules-section">
+                        <div class="scope-rules-header">
+                            <span class="label">Current Baseline Definitions</span>
+                        </div>
+                        <ul id="baseline-rules-list" class="scope-rules-list"></ul>
+                        <p id="baseline-empty" class="text-muted" style="display: none;">
+                            No baseline definitions configured.
+                        </p>
+                    </div>
 
-            <div class="stats-grid" style="margin-bottom: 18px;">
-                <a id="gap-link-never-scanned" class="stat-item clickable" href="#">
-                    <span class="stat-label">In-Scope Never Scanned</span>
-                    <span class="stat-value" id="gap-count-never-scanned">0</span>
-                </a>
-                <a id="gap-link-open-ports" class="stat-item clickable" href="#">
-                    <span class="stat-label">Open Ports (Scanned/Flagged)</span>
-                    <span class="stat-value" id="gap-count-open-ports">0</span>
-                </a>
-                <a id="gap-link-needs-ping" class="stat-item clickable" href="#">
-                    <span class="stat-label">Needs Ping Sweep</span>
-                    <span class="stat-value" id="gap-count-needs-ping">0</span>
-                </a>
-                <a id="gap-link-needs-top1k" class="stat-item clickable" href="#">
-                    <span class="stat-label">Needs Top 1k TCP</span>
-                    <span class="stat-value" id="gap-count-needs-top1k">0</span>
-                </a>
-                <a id="gap-link-needs-all" class="stat-item clickable" href="#">
-                    <span class="stat-label">Needs All TCP</span>
-                    <span class="stat-value" id="gap-count-needs-all">0</span>
-                </a>
-            </div>
+                    <div class="scope-rules-section">
+                        <div class="scope-rules-header">
+                            <span class="label">Evaluation Summary</span>
+                            <span id="baseline-generated-at" class="text-muted">Not evaluated yet</span>
+                        </div>
 
-            <div class="stats-grid">
-                <div>
-                    <div class="text-muted" style="margin-bottom: 8px;">Never Scanned (Preview)</div>
-                    <ul id="gap-list-never-scanned" class="gap-preview-list"></ul>
+                        <div class="stats-grid" style="margin-bottom: 18px;">
+                            <div class="stat-item">
+                                <span class="stat-label">Expected Total</span>
+                                <span class="stat-value" id="baseline-summary-expected-total">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Observed Total</span>
+                                <span class="stat-value" id="baseline-summary-observed-total">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Expected But Unseen</span>
+                                <span class="stat-value" id="baseline-summary-expected-unseen">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Seen But Out Of Scope</span>
+                                <span class="stat-value" id="baseline-summary-seen-out-scope">0</span>
+                            </div>
+                        </div>
+
+                        <div class="stats-grid">
+                            <div>
+                                <div class="text-muted" style="margin-bottom: 8px;">Expected But Unseen</div>
+                                <div class="baseline-list-controls">
+                                    <input type="text" id="baseline-expected-unseen-search" placeholder="Filter by IP (e.g. 10.0.0.)">
+                                    <div class="baseline-list-pagination">
+                                        <span id="baseline-expected-unseen-count" class="text-muted">Showing 0-0 of 0</span>
+                                        <button id="baseline-expected-unseen-prev" type="button" class="pagination-btn">Previous</button>
+                                        <button id="baseline-expected-unseen-next" type="button" class="pagination-btn">Next</button>
+                                    </div>
+                                </div>
+                                <ul id="baseline-list-expected-unseen" class="gap-preview-list"></ul>
+                            </div>
+                            <div>
+                                <div class="text-muted" style="margin-bottom: 8px;">Seen But Out Of Scope</div>
+                                <ul id="baseline-list-seen-out-scope" class="gap-preview-list"></ul>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <div class="text-muted" style="margin-bottom: 8px;">Open Ports (Preview)</div>
-                    <ul id="gap-list-open-ports" class="gap-preview-list"></ul>
-                </div>
-                <div>
-                    <div class="text-muted" style="margin-bottom: 8px;">Needs Ping Sweep</div>
-                    <ul id="gap-list-needs-ping" class="gap-preview-list"></ul>
-                </div>
-                <div>
-                    <div class="text-muted" style="margin-bottom: 8px;">Needs Top 1k TCP</div>
-                    <ul id="gap-list-needs-top1k" class="gap-preview-list"></ul>
-                </div>
-                <div>
-                    <div class="text-muted" style="margin-bottom: 8px;">Needs All TCP</div>
-                    <ul id="gap-list-needs-all" class="gap-preview-list"></ul>
-                </div>
-            </div>
+            </section>
         </div>
     </div>
 </body>

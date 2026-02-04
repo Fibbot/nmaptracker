@@ -1,6 +1,12 @@
 let currentPage = 1;
 const PAGE_SIZE = 50;
 let currentTotal = 0;
+const latestScanOptions = [
+    { value: 'none', label: 'None' },
+    { value: 'ping_sweep', label: 'Ping Sweep' },
+    { value: 'top1k', label: 'Top1k' },
+    { value: 'full_port', label: 'Full Port' }
+];
 
 document.addEventListener('DOMContentLoaded', async () => {
     const projectId = getProjectId();
@@ -79,7 +85,7 @@ function renderHosts(hosts, projectId) {
     if (!hosts || hosts.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 5;
+        td.colSpan = 7;
         td.style.textAlign = 'center';
         td.textContent = 'No hosts found';
         tr.appendChild(td);
@@ -117,10 +123,22 @@ function renderHosts(hosts, projectId) {
         if (h.Flagged) divStatus.appendChild(buildMiniBadge(`F:${h.Flagged}`, 'rgba(245,158,11,0.15)', '#fbbf24'));
         if (h.InProgress) divStatus.appendChild(buildMiniBadge(`IP:${h.InProgress}`, 'rgba(34,211,238,0.15)', '#22d3ee'));
         if (h.Done) divStatus.appendChild(buildMiniBadge(`D:${h.Done}`, 'rgba(34,197,94,0.15)', '#4ade80'));
-        if (h.ParkingLot) divStatus.appendChild(buildMiniBadge(`P:${h.ParkingLot}`, 'rgba(139,92,246,0.15)', '#a78bfa'));
 
         if (!divStatus.children.length) divStatus.textContent = '-';
         tdStatus.appendChild(divStatus);
+
+        const tdLatestScan = document.createElement('td');
+        const latestScanSelect = document.createElement('select');
+        latestScanSelect.style.width = '100%';
+        latestScanOptions.forEach(option => {
+            const opt = document.createElement('option');
+            opt.value = option.value;
+            opt.textContent = option.label;
+            latestScanSelect.appendChild(opt);
+        });
+        latestScanSelect.value = normalizeLatestScan(h.LatestScan);
+        latestScanSelect.addEventListener('change', () => updateLatestScan(projectId, h.ID, latestScanSelect.value, h.IPAddress));
+        tdLatestScan.appendChild(latestScanSelect);
 
         const tdActions = document.createElement('td');
         const delBtn = document.createElement('button');
@@ -138,6 +156,7 @@ function renderHosts(hosts, projectId) {
         tr.appendChild(tdScope);
         tr.appendChild(tdPorts);
         tr.appendChild(tdStatus);
+        tr.appendChild(tdLatestScan);
         tr.appendChild(tdActions);
 
         tbody.appendChild(tr);
@@ -171,6 +190,28 @@ async function deleteHost(projectId, hostId, ip) {
     } catch (err) {
         showToast(err.message, 'error');
     }
+}
+
+async function updateLatestScan(projectId, hostId, latestScan, ip) {
+    try {
+        await api(`/projects/${projectId}/hosts/${hostId}/latest-scan`, {
+            method: 'PUT',
+            body: JSON.stringify({ latest_scan: latestScan })
+        });
+        showToast(`Updated latest scan for ${ip}`, 'success');
+    } catch (err) {
+        showToast(err.message, 'error');
+        loadHosts();
+    }
+}
+
+function normalizeLatestScan(value) {
+    const normalized = String(value || '').toLowerCase().trim();
+    if (normalized === '' || normalized === 'none') return 'none';
+    if (normalized === 'ping' || normalized === 'ping_sweep') return 'ping_sweep';
+    if (normalized === 'top1k' || normalized === 'top_1k' || normalized === 'top_1k_tcp') return 'top1k';
+    if (normalized === 'full' || normalized === 'full_port' || normalized === 'all_tcp') return 'full_port';
+    return 'none';
 }
 
 function showToast(msg, type = 'info') {

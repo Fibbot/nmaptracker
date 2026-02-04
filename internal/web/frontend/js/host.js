@@ -252,7 +252,7 @@ function renderPorts(allPorts, projectId, hostId) {
         const tdStatus = document.createElement('td');
         const select = document.createElement('select');
         select.style.width = '100%';
-        ['scanned', 'flagged', 'in_progress', 'done', 'parking_lot'].forEach(s => {
+        ['scanned', 'flagged', 'in_progress', 'done'].forEach(s => {
             const opt = document.createElement('option');
             opt.value = s;
             opt.textContent = s.replace('_', ' ').toUpperCase();

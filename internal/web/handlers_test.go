@@ -242,6 +242,110 @@ func TestHostSubnetPagination(t *testing.T) {
 	}
 }
 
+func TestUpdateHostLatestScanValidationAndScoping(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	projectA, err := database.CreateProject("Scan-A")
+	if err != nil {
+		t.Fatalf("create project A: %v", err)
+	}
+	projectB, err := database.CreateProject("Scan-B")
+	if err != nil {
+		t.Fatalf("create project B: %v", err)
+	}
+
+	hostA, err := database.UpsertHost(db.Host{ProjectID: projectA.ID, IPAddress: "10.9.0.1", InScope: true})
+	if err != nil {
+		t.Fatalf("upsert host A: %v", err)
+	}
+	hostB, err := database.UpsertHost(db.Host{ProjectID: projectB.ID, IPAddress: "10.9.1.1", InScope: true})
+	if err != nil {
+		t.Fatalf("upsert host B: %v", err)
+	}
+
+	validBody := []byte(`{"latest_scan":"top1k"}`)
+	req := httptest.NewRequest(http.MethodPut, "http://localhost:8080/api/projects/"+strconv.FormatInt(projectA.ID, 10)+"/hosts/"+strconv.FormatInt(hostA.ID, 10)+"/latest-scan", bytes.NewReader(validBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for valid latest_scan, got %d", rec.Code)
+	}
+
+	updatedHost, found, err := database.GetHostByID(hostA.ID)
+	if err != nil || !found {
+		t.Fatalf("get updated host: %v found=%v", err, found)
+	}
+	if updatedHost.LatestScan != db.HostLatestScanTop1K {
+		t.Fatalf("expected latest_scan=%q, got %q", db.HostLatestScanTop1K, updatedHost.LatestScan)
+	}
+
+	invalidBody := []byte(`{"latest_scan":"not_real"}`)
+	req = httptest.NewRequest(http.MethodPut, "http://localhost:8080/api/projects/"+strconv.FormatInt(projectA.ID, 10)+"/hosts/"+strconv.FormatInt(hostA.ID, 10)+"/latest-scan", bytes.NewReader(invalidBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid latest_scan, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "http://localhost:8080/api/projects/"+strconv.FormatInt(projectA.ID, 10)+"/hosts/"+strconv.FormatInt(hostB.ID, 10)+"/latest-scan", bytes.NewReader(validBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for host project mismatch, got %d", rec.Code)
+	}
+}
+
+func TestListHostsIncludesLatestScanField(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("Scan-C")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	host, err := database.UpsertHost(db.Host{
+		ProjectID: project.ID,
+		IPAddress: "10.10.10.10",
+		InScope:   true,
+	})
+	if err != nil {
+		t.Fatalf("upsert host: %v", err)
+	}
+	if err := database.UpdateHostLatestScan(host.ID, db.HostLatestScanPingSweep); err != nil {
+		t.Fatalf("update latest scan: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/hosts", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp struct {
+		Items []struct {
+			ID         int64  `json:"ID"`
+			IPAddress  string `json:"IPAddress"`
+			LatestScan string `json:"LatestScan"`
+		} `json:"items"`
+		Total int `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal hosts list: %v", err)
+	}
+	if resp.Total != 1 || len(resp.Items) != 1 {
+		t.Fatalf("unexpected hosts list total/items: %+v", resp)
+	}
+	if resp.Items[0].LatestScan != db.HostLatestScanPingSweep {
+		t.Fatalf("expected latest_scan=%q in hosts list, got %q", db.HostLatestScanPingSweep, resp.Items[0].LatestScan)
+	}
+}
+
 func TestProjectPortsPagination(t *testing.T) {
 	database, server := newTestServer(t)
 	defer database.Close()
@@ -665,157 +769,6 @@ func insertCoverageImportForWebTest(database *db.DB, projectID int64, intent str
 	return tx.Commit()
 }
 
-func TestGapsEndpointSummaryAndLists(t *testing.T) {
-	database, server := newTestServer(t)
-	defer database.Close()
-
-	project, err := database.CreateProject("Lima")
-	if err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-
-	h1, _ := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.20.0.1", InScope: true})
-	h2, _ := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.20.0.2", InScope: true})
-	_, _ = database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.20.0.3", InScope: false})
-
-	if _, err := database.UpsertPort(db.Port{HostID: h1.ID, PortNumber: 80, Protocol: "tcp", State: "open", WorkStatus: "scanned", Service: "http"}); err != nil {
-		t.Fatalf("insert port: %v", err)
-	}
-	if _, err := database.UpsertPort(db.Port{HostID: h2.ID, PortNumber: 53, Protocol: "udp", State: "open", WorkStatus: "flagged", Service: "domain"}); err != nil {
-		t.Fatalf("insert port: %v", err)
-	}
-
-	if err := insertCoverageImportForWebTest(database, project.ID, db.IntentTop1KTCP, []string{h1.IPAddress}); err != nil {
-		t.Fatalf("insert import: %v", err)
-	}
-
-	req := httptest.NewRequest(
-		http.MethodGet,
-		"http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/gaps?preview_size=2&include_lists=true",
-		nil,
-	)
-	rec := httptest.NewRecorder()
-	server.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-
-	var resp struct {
-		Summary struct {
-			InScopeNeverScanned       int `json:"in_scope_never_scanned"`
-			OpenPortsScannedOrFlagged int `json:"open_ports_scanned_or_flagged"`
-			NeedsPingSweep            int `json:"needs_ping_sweep"`
-			NeedsTop1KTCP             int `json:"needs_top_1k_tcp"`
-			NeedsAllTCP               int `json:"needs_all_tcp"`
-		} `json:"summary"`
-		Lists struct {
-			InScopeNeverScanned       []db.GapHost        `json:"in_scope_never_scanned"`
-			OpenPortsScannedOrFlagged []db.GapOpenPortRow `json:"open_ports_scanned_or_flagged"`
-			NeedsPingSweep            []db.GapHost        `json:"needs_ping_sweep"`
-			NeedsTop1KTCP             []db.GapHost        `json:"needs_top_1k_tcp"`
-			NeedsAllTCP               []db.GapHost        `json:"needs_all_tcp"`
-		} `json:"lists"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	if resp.Summary.InScopeNeverScanned != 1 || resp.Summary.OpenPortsScannedOrFlagged != 2 {
-		t.Fatalf("unexpected gaps summary: %+v", resp.Summary)
-	}
-	if resp.Summary.NeedsPingSweep != 1 || resp.Summary.NeedsTop1KTCP != 1 || resp.Summary.NeedsAllTCP != 2 {
-		t.Fatalf("unexpected milestone summary in gaps: %+v", resp.Summary)
-	}
-	if len(resp.Lists.InScopeNeverScanned) != 1 || resp.Lists.InScopeNeverScanned[0].IPAddress != h2.IPAddress {
-		t.Fatalf("unexpected never scanned list: %+v", resp.Lists.InScopeNeverScanned)
-	}
-	if len(resp.Lists.OpenPortsScannedOrFlagged) != 2 {
-		t.Fatalf("expected 2 open-port rows, got %d", len(resp.Lists.OpenPortsScannedOrFlagged))
-	}
-
-	req = httptest.NewRequest(
-		http.MethodGet,
-		"http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/gaps?include_lists=not_bool",
-		nil,
-	)
-	rec = httptest.NewRecorder()
-	server.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for invalid include_lists, got %d", rec.Code)
-	}
-}
-
-func TestMilestoneQueuesEndpointMirrorsGapsMilestoneSummary(t *testing.T) {
-	database, server := newTestServer(t)
-	defer database.Close()
-
-	project, err := database.CreateProject("Mike")
-	if err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-
-	h1, _ := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.30.0.1", InScope: true})
-	h2, _ := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.30.0.2", InScope: true})
-
-	if err := insertCoverageImportForWebTest(database, project.ID, db.IntentAllTCP, []string{h1.IPAddress}); err != nil {
-		t.Fatalf("insert import: %v", err)
-	}
-
-	gapsReq := httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/gaps", nil)
-	gapsRec := httptest.NewRecorder()
-	server.Handler().ServeHTTP(gapsRec, gapsReq)
-	if gapsRec.Code != http.StatusOK {
-		t.Fatalf("gaps expected 200, got %d", gapsRec.Code)
-	}
-
-	queuesReq := httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/milestones", nil)
-	queuesRec := httptest.NewRecorder()
-	server.Handler().ServeHTTP(queuesRec, queuesReq)
-	if queuesRec.Code != http.StatusOK {
-		t.Fatalf("milestones expected 200, got %d", queuesRec.Code)
-	}
-
-	var gapsResp struct {
-		Summary struct {
-			NeedsPingSweep int `json:"needs_ping_sweep"`
-			NeedsTop1KTCP  int `json:"needs_top_1k_tcp"`
-			NeedsAllTCP    int `json:"needs_all_tcp"`
-		} `json:"summary"`
-	}
-	if err := json.Unmarshal(gapsRec.Body.Bytes(), &gapsResp); err != nil {
-		t.Fatalf("unmarshal gaps: %v", err)
-	}
-
-	var queuesResp struct {
-		Summary struct {
-			NeedsPingSweep int `json:"needs_ping_sweep"`
-			NeedsTop1KTCP  int `json:"needs_top_1k_tcp"`
-			NeedsAllTCP    int `json:"needs_all_tcp"`
-		} `json:"summary"`
-		Lists struct {
-			NeedsPingSweep []db.GapHost `json:"needs_ping_sweep"`
-			NeedsTop1KTCP  []db.GapHost `json:"needs_top_1k_tcp"`
-			NeedsAllTCP    []db.GapHost `json:"needs_all_tcp"`
-		} `json:"lists"`
-	}
-	if err := json.Unmarshal(queuesRec.Body.Bytes(), &queuesResp); err != nil {
-		t.Fatalf("unmarshal milestone queues: %v", err)
-	}
-
-	if queuesResp.Summary != gapsResp.Summary {
-		t.Fatalf("milestone summary mismatch gaps=%+v queues=%+v", gapsResp.Summary, queuesResp.Summary)
-	}
-	if len(queuesResp.Lists.NeedsPingSweep) != 1 || queuesResp.Lists.NeedsPingSweep[0].IPAddress != h2.IPAddress {
-		t.Fatalf("unexpected needs_ping_sweep list: %+v", queuesResp.Lists.NeedsPingSweep)
-	}
-	if len(queuesResp.Lists.NeedsTop1KTCP) != 1 || queuesResp.Lists.NeedsTop1KTCP[0].IPAddress != h2.IPAddress {
-		t.Fatalf("unexpected needs_top_1k_tcp list: %+v", queuesResp.Lists.NeedsTop1KTCP)
-	}
-	if len(queuesResp.Lists.NeedsAllTCP) != 1 || queuesResp.Lists.NeedsAllTCP[0].IPAddress != h2.IPAddress {
-		t.Fatalf("unexpected needs_all_tcp list: %+v", queuesResp.Lists.NeedsAllTCP)
-	}
-}
-
 func TestImportDeltaEndpointValidation(t *testing.T) {
 	database, server := newTestServer(t)
 	defer database.Close()
@@ -962,6 +915,404 @@ func TestImportDeltaEndpointResponse(t *testing.T) {
 	if len(resp.Lists.ChangedServiceFingerprints) != 1 || resp.Lists.ChangedServiceFingerprints[0].After.Version != "1.24" {
 		t.Fatalf("unexpected changed_service_fingerprints list: %+v", resp.Lists.ChangedServiceFingerprints)
 	}
+}
+
+func TestBaselineEndpointsCRUDAndEvaluate(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("Quebec")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	if _, err := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.0.0.1", Hostname: "inside", InScope: true}); err != nil {
+		t.Fatalf("insert host 10.0.0.1: %v", err)
+	}
+	if _, err := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.0.0.9", Hostname: "outside-a", InScope: false}); err != nil {
+		t.Fatalf("insert host 10.0.0.9: %v", err)
+	}
+	if _, err := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.0.0.10", Hostname: "outside-b", InScope: true}); err != nil {
+		t.Fatalf("insert host 10.0.0.10: %v", err)
+	}
+
+	postBody := []byte(`{"definitions":["10.0.0.0/30","10.0.0.8","10.0.0.8"]}`)
+	req := httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/baseline", bytes.NewReader(postBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+
+	var postResp struct {
+		Added int `json:"added"`
+		Items []struct {
+			ID         int64  `json:"id"`
+			Definition string `json:"definition"`
+			Type       string `json:"type"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &postResp); err != nil {
+		t.Fatalf("unmarshal post baseline: %v", err)
+	}
+	if postResp.Added != 2 || len(postResp.Items) != 2 {
+		t.Fatalf("unexpected baseline add response: %+v", postResp)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/baseline", nil)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var listResp struct {
+		Items []struct {
+			ID         int64  `json:"id"`
+			ProjectID  int64  `json:"project_id"`
+			Definition string `json:"definition"`
+			Type       string `json:"type"`
+			CreatedAt  string `json:"created_at"`
+		} `json:"items"`
+		Total int `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("unmarshal list baseline: %v", err)
+	}
+	if listResp.Total != 2 || len(listResp.Items) != 2 {
+		t.Fatalf("unexpected baseline list response: %+v", listResp)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/baseline/evaluate", nil)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var evalResp struct {
+		GeneratedAt string `json:"generated_at"`
+		ProjectID   int64  `json:"project_id"`
+		Summary     struct {
+			ExpectedTotal              int `json:"expected_total"`
+			ObservedTotal              int `json:"observed_total"`
+			ExpectedButUnseen          int `json:"expected_but_unseen"`
+			SeenButOutOfScope          int `json:"seen_but_out_of_scope"`
+			MarkedInScopeOutOfScope    int `json:"seen_but_out_of_scope_and_marked_in_scope"`
+			MarkedOutOfScopeOutOfScope int `json:"seen_but_out_of_scope_and_marked_out_scope"`
+		} `json:"summary"`
+		Lists struct {
+			ExpectedButUnseen []string `json:"expected_but_unseen"`
+			SeenButOutOfScope []struct {
+				HostID    int64  `json:"host_id"`
+				IPAddress string `json:"ip_address"`
+				Hostname  string `json:"hostname"`
+				InScope   bool   `json:"in_scope"`
+			} `json:"seen_but_out_of_scope"`
+		} `json:"lists"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &evalResp); err != nil {
+		t.Fatalf("unmarshal evaluate baseline: %v", err)
+	}
+	if evalResp.ProjectID != project.ID {
+		t.Fatalf("unexpected project id in eval response: %d", evalResp.ProjectID)
+	}
+	if evalResp.Summary.ExpectedTotal != 5 || evalResp.Summary.ObservedTotal != 3 {
+		t.Fatalf("unexpected baseline eval totals: %+v", evalResp.Summary)
+	}
+	if evalResp.Summary.ExpectedButUnseen != 4 || evalResp.Summary.SeenButOutOfScope != 2 {
+		t.Fatalf("unexpected baseline eval diff summary: %+v", evalResp.Summary)
+	}
+	if evalResp.Summary.MarkedInScopeOutOfScope != 1 || evalResp.Summary.MarkedOutOfScopeOutOfScope != 1 {
+		t.Fatalf("unexpected baseline eval classification summary: %+v", evalResp.Summary)
+	}
+	if len(evalResp.Lists.ExpectedButUnseen) != 4 || evalResp.Lists.ExpectedButUnseen[0] != "10.0.0.0" {
+		t.Fatalf("unexpected expected_but_unseen list: %+v", evalResp.Lists.ExpectedButUnseen)
+	}
+	if len(evalResp.Lists.SeenButOutOfScope) != 2 || evalResp.Lists.SeenButOutOfScope[0].IPAddress != "10.0.0.9" {
+		t.Fatalf("unexpected seen_but_out_of_scope list: %+v", evalResp.Lists.SeenButOutOfScope)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/baseline/"+strconv.FormatInt(listResp.Items[0].ID, 10), nil)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/baseline", nil)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 after delete, got %d", rec.Code)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("unmarshal list baseline after delete: %v", err)
+	}
+	if listResp.Total != 1 || len(listResp.Items) != 1 {
+		t.Fatalf("expected 1 baseline after delete, got %+v", listResp)
+	}
+}
+
+func TestBaselineEndpointsValidationAndScoping(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	projectA, err := database.CreateProject("Romeo")
+	if err != nil {
+		t.Fatalf("create project A: %v", err)
+	}
+	projectB, err := database.CreateProject("Sierra")
+	if err != nil {
+		t.Fatalf("create project B: %v", err)
+	}
+
+	_, inserted, err := database.BulkAddExpectedAssetBaselines(projectB.ID, []string{"10.99.0.0/24"})
+	if err != nil {
+		t.Fatalf("seed baseline for project B: %v", err)
+	}
+	if len(inserted) != 1 {
+		t.Fatalf("expected one inserted baseline row, got %d", len(inserted))
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "http://localhost:8080/api/projects/"+strconv.FormatInt(projectA.ID, 10)+"/baseline/"+strconv.FormatInt(inserted[0].ID, 10), nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for scoped delete mismatch, got %d", rec.Code)
+	}
+
+	invalidBodies := []string{
+		`{"definitions":["not-an-ip"]}`,
+		`{"definitions":["10.0.0.0/15"]}`,
+		`{"definitions":["2001:db8::1"]}`,
+	}
+	for _, payload := range invalidBodies {
+		req = httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/projects/"+strconv.FormatInt(projectA.ID, 10)+"/baseline", bytes.NewBufferString(payload))
+		req.Header.Set("Content-Type", "application/json")
+		rec = httptest.NewRecorder()
+		server.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for invalid baseline payload %s, got %d", payload, rec.Code)
+		}
+	}
+}
+
+func TestServiceQueueEndpointValidation(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("Tango")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/services", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing campaign, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/services?campaign=nope", nil)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown campaign, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/services?campaign=smb&page=0", nil)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid page, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/services?campaign=smb&page_size=0", nil)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid page_size, got %d", rec.Code)
+	}
+}
+
+func TestServiceQueueEndpointResponseAndPagination(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("Uniform")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	h1, _ := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.40.0.1", Hostname: "alpha", InScope: true})
+	h2, _ := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.40.0.2", Hostname: "beta", InScope: true})
+	h3, _ := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.40.0.3", Hostname: "charlie", InScope: true})
+	_, _ = database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.40.0.4", Hostname: "out", InScope: false})
+
+	if _, err := database.UpsertPort(db.Port{
+		HostID:     h1.ID,
+		PortNumber: 445,
+		Protocol:   "tcp",
+		State:      "open",
+		Service:    "microsoft-ds",
+		WorkStatus: "scanned",
+	}); err != nil {
+		t.Fatalf("insert h1 port 445: %v", err)
+	}
+	if _, err := database.UpsertPort(db.Port{
+		HostID:     h1.ID,
+		PortNumber: 139,
+		Protocol:   "tcp",
+		State:      "open|filtered",
+		Service:    "netbios-ssn",
+		WorkStatus: "flagged",
+	}); err != nil {
+		t.Fatalf("insert h1 port 139: %v", err)
+	}
+	if _, err := database.UpsertPort(db.Port{
+		HostID:     h2.ID,
+		PortNumber: 9000,
+		Protocol:   "tcp",
+		State:      "open",
+		Service:    "smb",
+		WorkStatus: "done",
+	}); err != nil {
+		t.Fatalf("insert h2 smb service port: %v", err)
+	}
+	if _, err := database.UpsertPort(db.Port{
+		HostID:     h3.ID,
+		PortNumber: 445,
+		Protocol:   "tcp",
+		State:      "open",
+		Service:    "microsoft-ds",
+		WorkStatus: "flagged",
+	}); err != nil {
+		t.Fatalf("insert h3 port 445: %v", err)
+	}
+
+	import1, err := insertServiceQueueImportForWebTest(database, project.ID, []string{h1.IPAddress})
+	if err != nil {
+		t.Fatalf("insert import1: %v", err)
+	}
+	import2, err := insertServiceQueueImportForWebTest(database, project.ID, []string{h3.IPAddress})
+	if err != nil {
+		t.Fatalf("insert import2: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/services?campaign=smb&page=1&page_size=2",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp struct {
+		Campaign        string  `json:"campaign"`
+		TotalHosts      int     `json:"total_hosts"`
+		Page            int     `json:"page"`
+		PageSize        int     `json:"page_size"`
+		SourceImportIDs []int64 `json:"source_import_ids"`
+		Items           []struct {
+			HostID        int64  `json:"host_id"`
+			IPAddress     string `json:"ip_address"`
+			Hostname      string `json:"hostname"`
+			StatusSummary struct {
+				Scanned    int `json:"scanned"`
+				Flagged    int `json:"flagged"`
+				InProgress int `json:"in_progress"`
+				Done       int `json:"done"`
+			} `json:"status_summary"`
+			MatchingPorts []struct {
+				PortID     int64  `json:"port_id"`
+				PortNumber int    `json:"port_number"`
+				Protocol   string `json:"protocol"`
+				State      string `json:"state"`
+				Service    string `json:"service"`
+				WorkStatus string `json:"work_status"`
+				LastSeen   string `json:"last_seen"`
+			} `json:"matching_ports"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal service queue response: %v", err)
+	}
+	if resp.Campaign != "smb" || resp.TotalHosts != 3 || resp.Page != 1 || resp.PageSize != 2 {
+		t.Fatalf("unexpected envelope: %+v", resp)
+	}
+	if len(resp.Items) != 2 || resp.Items[0].IPAddress != h1.IPAddress || resp.Items[1].IPAddress != h2.IPAddress {
+		t.Fatalf("unexpected first page items: %+v", resp.Items)
+	}
+	if len(resp.Items[0].MatchingPorts) != 2 {
+		t.Fatalf("expected host1 to have 2 matching ports, got %d", len(resp.Items[0].MatchingPorts))
+	}
+	if resp.Items[0].StatusSummary.Scanned != 1 || resp.Items[0].StatusSummary.Flagged != 1 {
+		t.Fatalf("unexpected host1 status summary: %+v", resp.Items[0].StatusSummary)
+	}
+	if resp.Items[1].StatusSummary.Done != 1 {
+		t.Fatalf("unexpected host2 status summary: %+v", resp.Items[1].StatusSummary)
+	}
+	if len(resp.SourceImportIDs) != 1 || resp.SourceImportIDs[0] != import1 {
+		t.Fatalf("unexpected first page source_import_ids: %+v", resp.SourceImportIDs)
+	}
+
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/services?campaign=smb&page=2&page_size=2",
+		nil,
+	)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for second page, got %d", rec.Code)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal second page service queue response: %v", err)
+	}
+	if len(resp.Items) != 1 || resp.Items[0].IPAddress != h3.IPAddress {
+		t.Fatalf("unexpected second page items: %+v", resp.Items)
+	}
+	if resp.Items[0].StatusSummary.Flagged != 1 {
+		t.Fatalf("unexpected host3 status summary: %+v", resp.Items[0].StatusSummary)
+	}
+	if len(resp.SourceImportIDs) != 1 || resp.SourceImportIDs[0] != import2 {
+		t.Fatalf("unexpected second page source_import_ids: %+v", resp.SourceImportIDs)
+	}
+}
+
+func insertServiceQueueImportForWebTest(database *db.DB, projectID int64, ips []string) (int64, error) {
+	tx, err := database.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	record, err := tx.InsertScanImport(db.ScanImport{
+		ProjectID: projectID,
+		Filename:  "service-queue.xml",
+	})
+	if err != nil {
+		return 0, err
+	}
+	for _, ip := range ips {
+		if _, err := tx.InsertHostObservation(db.HostObservation{
+			ScanImportID: record.ID,
+			ProjectID:    projectID,
+			IPAddress:    ip,
+			InScope:      true,
+			HostState:    "up",
+		}); err != nil {
+			return 0, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return record.ID, nil
 }
 
 func insertDeltaImportForWebTest(database *db.DB, projectID int64, filename string, hosts []db.HostObservation, ports []db.PortObservation) (int64, error) {

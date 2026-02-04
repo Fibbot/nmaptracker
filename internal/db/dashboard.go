@@ -8,7 +8,6 @@ type WorkStatusCounts struct {
 	Flagged    int
 	InProgress int
 	Done       int
-	ParkingLot int
 }
 
 // DashboardStats summarizes project-level counts for the dashboard.
@@ -60,8 +59,6 @@ func (db *DB) GetDashboardStats(projectID int64) (DashboardStats, error) {
 			stats.WorkStatus.InProgress = count
 		case "done":
 			stats.WorkStatus.Done = count
-		case "parking_lot":
-			stats.WorkStatus.ParkingLot = count
 		}
 	}
 	if err := rows.Err(); err != nil {

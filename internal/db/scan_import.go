@@ -179,8 +179,118 @@ func (db *DB) SetScanImportIntents(projectID, importID int64, intents []ScanImpo
 		}
 	}
 
+	if err := syncHostLatestScanForImport(tx, projectID, importID); err != nil {
+		return fmt.Errorf("sync host latest scan for import intents: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit set scan import intents: %w", err)
 	}
 	return nil
+}
+
+func syncHostLatestScanForImport(tx *Tx, projectID, importID int64) error {
+	rows, err := tx.Query(
+		`SELECT DISTINCT ip_address
+		   FROM host_observation
+		  WHERE project_id = ? AND scan_import_id = ?`,
+		projectID, importID,
+	)
+	if err != nil {
+		return fmt.Errorf("list observed host ips for import: %w", err)
+	}
+	defer rows.Close()
+
+	var ips []string
+	for rows.Next() {
+		var ip string
+		if err := rows.Scan(&ip); err != nil {
+			return fmt.Errorf("scan observed host ip for import: %w", err)
+		}
+		ips = append(ips, ip)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate observed host ips for import: %w", err)
+	}
+
+	for _, ip := range ips {
+		host, found, err := tx.GetHostByIP(projectID, ip)
+		if err != nil {
+			return fmt.Errorf("get host by ip for latest scan sync: %w", err)
+		}
+		if !found {
+			continue
+		}
+
+		latestImportID, found, err := latestObservedImportForHost(tx, projectID, ip)
+		if err != nil {
+			return fmt.Errorf("latest observed import for host %s: %w", ip, err)
+		}
+		if !found {
+			if _, err := tx.Exec(`UPDATE host SET latest_scan = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, HostLatestScanNone, host.ID); err != nil {
+				return fmt.Errorf("clear host latest scan for host %s: %w", ip, err)
+			}
+			continue
+		}
+
+		latestScan, err := deriveLatestScanForImport(tx, latestImportID)
+		if err != nil {
+			return fmt.Errorf("derive latest scan for import %d: %w", latestImportID, err)
+		}
+
+		if _, err := tx.Exec(`UPDATE host SET latest_scan = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, latestScan, host.ID); err != nil {
+			return fmt.Errorf("update host latest scan for host %s: %w", ip, err)
+		}
+	}
+
+	return nil
+}
+
+func latestObservedImportForHost(tx *Tx, projectID int64, ip string) (int64, bool, error) {
+	var importID int64
+	err := tx.QueryRow(
+		`SELECT ho.scan_import_id
+		   FROM host_observation ho
+		   JOIN scan_import si ON si.id = ho.scan_import_id
+		  WHERE ho.project_id = ? AND ho.ip_address = ?
+		  ORDER BY si.import_time DESC, ho.scan_import_id DESC
+		  LIMIT 1`,
+		projectID, ip,
+	).Scan(&importID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, false, nil
+		}
+		return 0, false, fmt.Errorf("query latest observed import id: %w", err)
+	}
+	return importID, true, nil
+}
+
+func deriveLatestScanForImport(tx *Tx, importID int64) (string, error) {
+	var hasAllTCP, hasTop1K, hasPingSweep int
+	if err := tx.QueryRow(
+		`SELECT
+		     COALESCE(MAX(CASE WHEN intent = ? THEN 1 ELSE 0 END), 0),
+		     COALESCE(MAX(CASE WHEN intent = ? THEN 1 ELSE 0 END), 0),
+		     COALESCE(MAX(CASE WHEN intent = ? THEN 1 ELSE 0 END), 0)
+		   FROM scan_import_intent
+		  WHERE scan_import_id = ?`,
+		IntentAllTCP,
+		IntentTop1KTCP,
+		IntentPingSweep,
+		importID,
+	).Scan(&hasAllTCP, &hasTop1K, &hasPingSweep); err != nil {
+		return "", fmt.Errorf("query import intent flags: %w", err)
+	}
+
+	if hasAllTCP == 1 {
+		return HostLatestScanFullPort, nil
+	}
+	if hasTop1K == 1 {
+		return HostLatestScanTop1K, nil
+	}
+	if hasPingSweep == 1 {
+		return HostLatestScanPingSweep, nil
+	}
+	return HostLatestScanNone, nil
 }

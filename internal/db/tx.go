@@ -62,10 +62,10 @@ func (tx *Tx) UpdateScanImportCounts(id int64, hostsFound, portsFound int) error
 func (tx *Tx) GetHostByIP(projectID int64, ip string) (Host, bool, error) {
 	var h Host
 	err := tx.QueryRow(
-		`SELECT id, project_id, ip_address, hostname, os_guess, in_scope, notes, created_at, updated_at
+		`SELECT id, project_id, ip_address, hostname, os_guess, latest_scan, in_scope, notes, created_at, updated_at
 		 FROM host WHERE project_id = ? AND ip_address = ?`,
 		projectID, ip,
-	).Scan(&h.ID, &h.ProjectID, &h.IPAddress, &h.Hostname, &h.OSGuess, &h.InScope, &h.Notes, &h.CreatedAt, &h.UpdatedAt)
+	).Scan(&h.ID, &h.ProjectID, &h.IPAddress, &h.Hostname, &h.OSGuess, &h.LatestScan, &h.InScope, &h.Notes, &h.CreatedAt, &h.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return Host{}, false, nil
@@ -92,9 +92,9 @@ func (tx *Tx) UpsertHost(h Host) (Host, error) {
 		   notes=excluded.notes,
 		   ip_int=excluded.ip_int,
 		   updated_at=CURRENT_TIMESTAMP
-		 RETURNING id, project_id, ip_address, hostname, os_guess, in_scope, notes, created_at, updated_at`,
+		 RETURNING id, project_id, ip_address, hostname, os_guess, latest_scan, in_scope, notes, created_at, updated_at`,
 		h.ProjectID, h.IPAddress, h.Hostname, h.OSGuess, h.InScope, h.Notes, ipInt,
-	).Scan(&out.ID, &out.ProjectID, &out.IPAddress, &out.Hostname, &out.OSGuess, &out.InScope, &out.Notes, &out.CreatedAt, &out.UpdatedAt)
+	).Scan(&out.ID, &out.ProjectID, &out.IPAddress, &out.Hostname, &out.OSGuess, &out.LatestScan, &out.InScope, &out.Notes, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		return Host{}, fmt.Errorf("upsert host: %w", err)
 	}

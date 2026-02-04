@@ -297,6 +297,8 @@ func SuggestIntents(filename string, nmapArgs string, obs Observations) []Sugges
 	hasPortSelection := rePortSelect.MatchString(args) || strings.Contains(args, "--port")
 	hasAllPorts := hasFlag(args, "-p-") || reFullTCP.MatchString(args)
 	hasVulnScript := reScriptVuln.MatchString(args)
+	hasArgs := args != ""
+	isLikelyDefaultTop1K := hasArgs && !hasSN && !hasSU && !hasAllPorts && !hasPortSelection
 
 	seen := make(map[string]struct{})
 	var out []SuggestedIntent
@@ -313,6 +315,9 @@ func SuggestIntents(filename string, nmapArgs string, obs Observations) []Sugges
 	}
 	if hasTop1000 {
 		add(db.IntentTop1KTCP, 0.98)
+	} else if isLikelyDefaultTop1K {
+		// Default nmap TCP scans probe top 1,000 ports unless explicit port selection is provided.
+		add(db.IntentTop1KTCP, 0.85)
 	}
 	if hasAllPorts {
 		add(db.IntentAllTCP, 0.99)

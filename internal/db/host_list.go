@@ -10,13 +10,13 @@ type HostListItem struct {
 	ID         int64
 	IPAddress  string
 	Hostname   string
+	LatestScan string
 	InScope    bool
 	PortCount  int
 	Scanned    int
 	Flagged    int
 	InProgress int
 	Done       int
-	ParkingLot int
 }
 
 type hostListQuery struct {
@@ -95,7 +95,7 @@ func buildHostListQuery(projectID int64, inScope *bool, statusFilters []string, 
 		var conditions []string
 		for _, status := range statusFilters {
 			switch status {
-			case "scanned", "flagged", "in_progress", "done", "parking_lot":
+			case "scanned", "flagged", "in_progress", "done":
 				conditions = append(conditions, fmt.Sprintf("SUM(CASE WHEN p.state = 'open' AND p.work_status = '%s' THEN 1 ELSE 0 END) > 0", status))
 			}
 		}
@@ -117,13 +117,13 @@ func (db *DB) queryHostSummary(query hostListQuery, limit, offset int) ([]HostLi
 		`SELECT h.id,
 		        h.ip_address,
 		        h.hostname,
+		        h.latest_scan,
 		        h.in_scope,
 		        COUNT(p.id) AS port_count,
 		        COALESCE(SUM(CASE WHEN p.state = 'open' AND p.work_status = 'scanned' THEN 1 ELSE 0 END), 0) AS scanned_count,
 		        COALESCE(SUM(CASE WHEN p.state = 'open' AND p.work_status = 'flagged' THEN 1 ELSE 0 END), 0) AS flagged_count,
 		        COALESCE(SUM(CASE WHEN p.state = 'open' AND p.work_status = 'in_progress' THEN 1 ELSE 0 END), 0) AS in_progress_count,
-		        COALESCE(SUM(CASE WHEN p.state = 'open' AND p.work_status = 'done' THEN 1 ELSE 0 END), 0) AS done_count,
-		        COALESCE(SUM(CASE WHEN p.state = 'open' AND p.work_status = 'parking_lot' THEN 1 ELSE 0 END), 0) AS parking_lot_count
+		        COALESCE(SUM(CASE WHEN p.state = 'open' AND p.work_status = 'done' THEN 1 ELSE 0 END), 0) AS done_count
 		   FROM host h
 		   LEFT JOIN port p ON p.host_id = h.id
 		  WHERE %s
@@ -152,13 +152,13 @@ func (db *DB) queryHostSummary(query hostListQuery, limit, offset int) ([]HostLi
 			&item.ID,
 			&item.IPAddress,
 			&item.Hostname,
+			&item.LatestScan,
 			&item.InScope,
 			&item.PortCount,
 			&item.Scanned,
 			&item.Flagged,
 			&item.InProgress,
 			&item.Done,
-			&item.ParkingLot,
 		); err != nil {
 			return nil, fmt.Errorf("scan host summary: %w", err)
 		}

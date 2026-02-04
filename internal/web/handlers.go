@@ -341,6 +341,39 @@ func (s *Server) apiUpdateHostNotes(w http.ResponseWriter, r *http.Request) {
 	s.jsonResponse(w, map[string]string{"status": "ok"}, http.StatusOK)
 }
 
+func (s *Server) apiUpdateHostLatestScan(w http.ResponseWriter, r *http.Request) {
+	projectID, hostID, err := projectHostIDs(r)
+	if err != nil {
+		s.badRequest(w, err)
+		return
+	}
+	var req struct {
+		LatestScan string `json:"latest_scan"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.badRequest(w, err)
+		return
+	}
+
+	latestScan := db.NormalizeHostLatestScan(req.LatestScan)
+	if !db.ValidHostLatestScan(latestScan) {
+		s.badRequest(w, fmt.Errorf("invalid latest_scan"))
+		return
+	}
+
+	host, found, err := s.DB.GetHostByID(hostID)
+	if err != nil || !found || host.ProjectID != projectID {
+		s.errorResponse(w, fmt.Errorf("host not found"), http.StatusNotFound)
+		return
+	}
+
+	if err := s.DB.UpdateHostLatestScan(hostID, latestScan); err != nil {
+		s.serverError(w, err)
+		return
+	}
+	s.jsonResponse(w, map[string]string{"status": "ok"}, http.StatusOK)
+}
+
 func (s *Server) apiUpdatePortStatus(w http.ResponseWriter, r *http.Request) {
 	projectID, hostID, portID, err := projectHostPortIDs(r)
 	if err != nil {
@@ -598,7 +631,7 @@ func parseProjectID(r *http.Request) (int64, error) {
 
 func isValidWorkStatus(status string) bool {
 	switch status {
-	case "scanned", "flagged", "in_progress", "done", "parking_lot":
+	case "scanned", "flagged", "in_progress", "done":
 		return true
 	default:
 		return false
@@ -723,7 +756,6 @@ func parseWorkStatusFilters(raw string) ([]string, error) {
 		"flagged":     true,
 		"in_progress": true,
 		"done":        true,
-		"parking_lot": true,
 	}
 	var out []string
 	for _, part := range parts {

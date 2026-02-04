@@ -136,6 +136,40 @@ func TestHostUpsertAndList(t *testing.T) {
 	if got.Hostname != "example" || got.OSGuess != "linux" || got.InScope != false || got.Notes != "updated" {
 		t.Fatalf("host not updated: %#v", got)
 	}
+	if got.LatestScan != HostLatestScanNone {
+		t.Fatalf("expected default latest_scan=%q, got %q", HostLatestScanNone, got.LatestScan)
+	}
+}
+
+func TestUpdateHostLatestScan(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	p, err := db.CreateProject("host-scan")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	h, err := db.UpsertHost(Host{ProjectID: p.ID, IPAddress: "192.0.2.25", InScope: true})
+	if err != nil {
+		t.Fatalf("insert host: %v", err)
+	}
+
+	if err := db.UpdateHostLatestScan(h.ID, "top_1k_tcp"); err != nil {
+		t.Fatalf("update host latest scan: %v", err)
+	}
+
+	updated, found, err := db.GetHostByID(h.ID)
+	if err != nil || !found {
+		t.Fatalf("get host by id: err=%v found=%v", err, found)
+	}
+	if updated.LatestScan != HostLatestScanTop1K {
+		t.Fatalf("expected latest_scan=%q, got %q", HostLatestScanTop1K, updated.LatestScan)
+	}
+
+	if err := db.UpdateHostLatestScan(h.ID, "invalid"); err == nil {
+		t.Fatalf("expected invalid latest scan update error")
+	}
 }
 
 func TestPortUpsertAndList(t *testing.T) {
@@ -225,5 +259,91 @@ func TestInsertScanImport(t *testing.T) {
 	}
 	if record.ImportTime.IsZero() {
 		t.Fatalf("expected import_time to be set")
+	}
+}
+
+func TestSetScanImportIntentsSyncsHostLatestScan(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	project, err := db.CreateProject("intent-sync")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	host, err := db.UpsertHost(Host{
+		ProjectID: project.ID,
+		IPAddress: "198.51.100.42",
+		InScope:   true,
+	})
+	if err != nil {
+		t.Fatalf("upsert host: %v", err)
+	}
+
+	olderImport, err := db.InsertScanImport(ScanImport{ProjectID: project.ID, Filename: "older.xml"})
+	if err != nil {
+		t.Fatalf("insert older import: %v", err)
+	}
+	newerImport, err := db.InsertScanImport(ScanImport{ProjectID: project.ID, Filename: "newer.xml"})
+	if err != nil {
+		t.Fatalf("insert newer import: %v", err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if _, err := tx.InsertHostObservation(HostObservation{
+		ScanImportID: olderImport.ID,
+		ProjectID:    project.ID,
+		IPAddress:    host.IPAddress,
+		Hostname:     "",
+		InScope:      true,
+		HostState:    "up",
+	}); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("insert older host observation: %v", err)
+	}
+	if _, err := tx.InsertHostObservation(HostObservation{
+		ScanImportID: newerImport.ID,
+		ProjectID:    project.ID,
+		IPAddress:    host.IPAddress,
+		Hostname:     "",
+		InScope:      true,
+		HostState:    "up",
+	}); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("insert newer host observation: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit observations: %v", err)
+	}
+
+	if err := db.SetScanImportIntents(project.ID, newerImport.ID, []ScanImportIntentInput{
+		{Intent: IntentTop1KTCP, Source: IntentSourceManual, Confidence: 1.0},
+	}); err != nil {
+		t.Fatalf("set newer import intents: %v", err)
+	}
+
+	updated, found, err := db.GetHostByID(host.ID)
+	if err != nil || !found {
+		t.Fatalf("get host after newer intents: err=%v found=%v", err, found)
+	}
+	if updated.LatestScan != HostLatestScanTop1K {
+		t.Fatalf("expected latest_scan %q, got %q", HostLatestScanTop1K, updated.LatestScan)
+	}
+
+	// Updating an older import should not overwrite the latest observation's classification.
+	if err := db.SetScanImportIntents(project.ID, olderImport.ID, []ScanImportIntentInput{
+		{Intent: IntentPingSweep, Source: IntentSourceManual, Confidence: 1.0},
+	}); err != nil {
+		t.Fatalf("set older import intents: %v", err)
+	}
+
+	updated, found, err = db.GetHostByID(host.ID)
+	if err != nil || !found {
+		t.Fatalf("get host after older intents: err=%v found=%v", err, found)
+	}
+	if updated.LatestScan != HostLatestScanTop1K {
+		t.Fatalf("expected latest_scan to remain %q, got %q", HostLatestScanTop1K, updated.LatestScan)
 	}
 }

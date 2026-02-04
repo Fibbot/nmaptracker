@@ -3,6 +3,14 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
+)
+
+const (
+	HostLatestScanNone      = "none"
+	HostLatestScanPingSweep = "ping_sweep"
+	HostLatestScanTop1K     = "top1k"
+	HostLatestScanFullPort  = "full_port"
 )
 
 // UpsertHost inserts or updates a host keyed by (project_id, ip_address).
@@ -22,9 +30,9 @@ func (db *DB) UpsertHost(h Host) (Host, error) {
 		   notes=excluded.notes,
 		   ip_int=excluded.ip_int,
 		   updated_at=CURRENT_TIMESTAMP
-		 RETURNING id, project_id, ip_address, hostname, os_guess, in_scope, notes, created_at, updated_at`,
+		 RETURNING id, project_id, ip_address, hostname, os_guess, latest_scan, in_scope, notes, created_at, updated_at`,
 		h.ProjectID, h.IPAddress, h.Hostname, h.OSGuess, h.InScope, h.Notes, ipInt,
-	).Scan(&out.ID, &out.ProjectID, &out.IPAddress, &out.Hostname, &out.OSGuess, &out.InScope, &out.Notes, &out.CreatedAt, &out.UpdatedAt)
+	).Scan(&out.ID, &out.ProjectID, &out.IPAddress, &out.Hostname, &out.OSGuess, &out.LatestScan, &out.InScope, &out.Notes, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		return Host{}, fmt.Errorf("upsert host: %w", err)
 	}
@@ -35,10 +43,10 @@ func (db *DB) UpsertHost(h Host) (Host, error) {
 func (db *DB) GetHostByIP(projectID int64, ip string) (Host, bool, error) {
 	var h Host
 	err := db.QueryRow(
-		`SELECT id, project_id, ip_address, hostname, os_guess, in_scope, notes, created_at, updated_at
+		`SELECT id, project_id, ip_address, hostname, os_guess, latest_scan, in_scope, notes, created_at, updated_at
 		 FROM host WHERE project_id = ? AND ip_address = ?`,
 		projectID, ip,
-	).Scan(&h.ID, &h.ProjectID, &h.IPAddress, &h.Hostname, &h.OSGuess, &h.InScope, &h.Notes, &h.CreatedAt, &h.UpdatedAt)
+	).Scan(&h.ID, &h.ProjectID, &h.IPAddress, &h.Hostname, &h.OSGuess, &h.LatestScan, &h.InScope, &h.Notes, &h.CreatedAt, &h.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return Host{}, false, nil
@@ -52,10 +60,10 @@ func (db *DB) GetHostByIP(projectID int64, ip string) (Host, bool, error) {
 func (db *DB) GetHostByID(id int64) (Host, bool, error) {
 	var h Host
 	err := db.QueryRow(
-		`SELECT id, project_id, ip_address, hostname, os_guess, in_scope, notes, created_at, updated_at
+		`SELECT id, project_id, ip_address, hostname, os_guess, latest_scan, in_scope, notes, created_at, updated_at
 		 FROM host WHERE id = ?`,
 		id,
-	).Scan(&h.ID, &h.ProjectID, &h.IPAddress, &h.Hostname, &h.OSGuess, &h.InScope, &h.Notes, &h.CreatedAt, &h.UpdatedAt)
+	).Scan(&h.ID, &h.ProjectID, &h.IPAddress, &h.Hostname, &h.OSGuess, &h.LatestScan, &h.InScope, &h.Notes, &h.CreatedAt, &h.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return Host{}, false, nil
@@ -68,7 +76,7 @@ func (db *DB) GetHostByID(id int64) (Host, bool, error) {
 // ListHosts returns hosts for a project ordered by ip_address.
 func (db *DB) ListHosts(projectID int64) ([]Host, error) {
 	rows, err := db.Query(
-		`SELECT id, project_id, ip_address, hostname, os_guess, in_scope, notes, created_at, updated_at
+		`SELECT id, project_id, ip_address, hostname, os_guess, latest_scan, in_scope, notes, created_at, updated_at
 		 FROM host WHERE project_id = ? ORDER BY ip_address`,
 		projectID,
 	)
@@ -80,7 +88,7 @@ func (db *DB) ListHosts(projectID int64) ([]Host, error) {
 	var hosts []Host
 	for rows.Next() {
 		var h Host
-		if err := rows.Scan(&h.ID, &h.ProjectID, &h.IPAddress, &h.Hostname, &h.OSGuess, &h.InScope, &h.Notes, &h.CreatedAt, &h.UpdatedAt); err != nil {
+		if err := rows.Scan(&h.ID, &h.ProjectID, &h.IPAddress, &h.Hostname, &h.OSGuess, &h.LatestScan, &h.InScope, &h.Notes, &h.CreatedAt, &h.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan host: %w", err)
 		}
 		hosts = append(hosts, h)
@@ -119,4 +127,49 @@ func (db *DB) UpdateHostScope(id int64, inScope bool) error {
 		return fmt.Errorf("update host scope: %w", err)
 	}
 	return nil
+}
+
+// ValidHostLatestScan reports whether latest_scan uses a supported value.
+func ValidHostLatestScan(value string) bool {
+	switch normalizeHostLatestScan(value) {
+	case HostLatestScanNone, HostLatestScanPingSweep, HostLatestScanTop1K, HostLatestScanFullPort:
+		return true
+	default:
+		return false
+	}
+}
+
+// NormalizeHostLatestScan canonicalizes the latest scan marker.
+func NormalizeHostLatestScan(value string) string {
+	return normalizeHostLatestScan(value)
+}
+
+// UpdateHostLatestScan updates the latest scan marker for a host.
+func (db *DB) UpdateHostLatestScan(id int64, value string) error {
+	normalized := normalizeHostLatestScan(value)
+	if !ValidHostLatestScan(normalized) {
+		return fmt.Errorf("invalid latest scan")
+	}
+
+	_, err := db.Exec(`UPDATE host SET latest_scan = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, normalized, id)
+	if err != nil {
+		return fmt.Errorf("update host latest scan: %w", err)
+	}
+	return nil
+}
+
+func normalizeHostLatestScan(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case "", HostLatestScanNone:
+		return HostLatestScanNone
+	case "ping", "ping_sweep":
+		return HostLatestScanPingSweep
+	case "top1k", "top_1k", "top_1k_tcp":
+		return HostLatestScanTop1K
+	case "full", "full_port", "all_tcp":
+		return HostLatestScanFullPort
+	default:
+		return normalized
+	}
 }

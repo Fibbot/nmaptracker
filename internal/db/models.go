@@ -54,15 +54,16 @@ type ScanImportWithIntents struct {
 
 // Host represents a scanned host.
 type Host struct {
-	ID        int64
-	ProjectID int64
-	IPAddress string
-	Hostname  string
-	OSGuess   string
-	InScope   bool
-	Notes     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID         int64
+	ProjectID  int64
+	IPAddress  string
+	Hostname   string
+	OSGuess    string
+	LatestScan string
+	InScope    bool
+	Notes      string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // Port represents a port observation for a host.

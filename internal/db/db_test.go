@@ -146,6 +146,60 @@ func TestOpenEnablesWALAndAllowsConcurrentOpens(t *testing.T) {
 	}
 }
 
+func TestMigrationsConvertParkingLotToFlagged(t *testing.T) {
+	dir := testutil.TempDir(t)
+	path := filepath.Join(dir, "migration-reapply.db")
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	project, err := db.CreateProject("migration-check")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	host, err := db.UpsertHost(Host{
+		ProjectID: project.ID,
+		IPAddress: "192.0.2.45",
+		InScope:   true,
+	})
+	if err != nil {
+		t.Fatalf("upsert host: %v", err)
+	}
+	if _, err := db.UpsertPort(Port{
+		HostID:     host.ID,
+		PortNumber: 445,
+		Protocol:   "tcp",
+		State:      "open",
+		Service:    "microsoft-ds",
+		WorkStatus: "parking_lot",
+	}); err != nil {
+		t.Fatalf("upsert parking_lot port: %v", err)
+	}
+
+	var before string
+	if err := db.QueryRow(`SELECT work_status FROM port WHERE host_id = ? LIMIT 1`, host.ID).Scan(&before); err != nil {
+		t.Fatalf("query pre-migration status: %v", err)
+	}
+	if before != "parking_lot" {
+		t.Fatalf("expected pre-migration status parking_lot, got %q", before)
+	}
+
+	if err := runMigrations(db.DB); err != nil {
+		t.Fatalf("re-run migrations: %v", err)
+	}
+
+	var after string
+	if err := db.QueryRow(`SELECT work_status FROM port WHERE host_id = ? LIMIT 1`, host.ID).Scan(&after); err != nil {
+		t.Fatalf("query post-migration status: %v", err)
+	}
+	if after != "flagged" {
+		t.Fatalf("expected post-migration status flagged, got %q", after)
+	}
+}
+
 // Helpers
 
 func mustListStrings(t *testing.T, db *DB, query string) map[string]struct{} {
