@@ -88,6 +88,9 @@ func runMigrations(sqlDB *sql.DB) error {
 		}
 		if _, err := sqlDB.Exec(sqlText); err != nil {
 			if isDuplicateColumnError(err) {
+				// A failed migration wrapped in BEGIN/COMMIT can leave an open
+				// transaction, so clear it before moving to later migrations.
+				_, _ = sqlDB.Exec(`ROLLBACK;`)
 				continue
 			}
 			return fmt.Errorf("apply migration %s: %w", name, err)

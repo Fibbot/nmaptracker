@@ -70,8 +70,8 @@ func TestImportCLI(t *testing.T) {
 	if hostCount != 1 {
 		t.Fatalf("expected 1 host, got %d", hostCount)
 	}
-	if portCount != 25 {
-		t.Fatalf("expected 25 ports, got %d", portCount)
+	if portCount != 9 {
+		t.Fatalf("expected 9 ports, got %d", portCount)
 	}
 }
 

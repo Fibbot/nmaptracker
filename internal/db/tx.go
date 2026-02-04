@@ -34,6 +34,21 @@ func (tx *Tx) InsertScanImport(s ScanImport) (ScanImport, error) {
 	return out, nil
 }
 
+// InsertScanImportIntent records one intent tag for a scan import.
+func (tx *Tx) InsertScanImportIntent(intent ScanImportIntent) (ScanImportIntent, error) {
+	var out ScanImportIntent
+	err := tx.QueryRow(
+		`INSERT INTO scan_import_intent (scan_import_id, intent, source, confidence)
+		 VALUES (?, ?, ?, ?)
+		 RETURNING id, scan_import_id, intent, source, confidence, created_at`,
+		intent.ScanImportID, intent.Intent, intent.Source, intent.Confidence,
+	).Scan(&out.ID, &out.ScanImportID, &out.Intent, &out.Source, &out.Confidence, &out.CreatedAt)
+	if err != nil {
+		return ScanImportIntent{}, fmt.Errorf("insert scan import intent: %w", err)
+	}
+	return out, nil
+}
+
 // UpdateScanImportCounts updates the hosts/ports counts for an import within a transaction.
 func (tx *Tx) UpdateScanImportCounts(id int64, hostsFound, portsFound int) error {
 	_, err := tx.Exec(`UPDATE scan_import SET hosts_found = ?, ports_found = ? WHERE id = ?`, hostsFound, portsFound, id)

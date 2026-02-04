@@ -29,6 +29,9 @@ func TestParseXMLSampleFile(t *testing.T) {
 	if host.Hostname != "localhost" {
 		t.Fatalf("unexpected hostname: %s", host.Hostname)
 	}
+	if host.HostState != "up" {
+		t.Fatalf("expected host state up, got %q", host.HostState)
+	}
 	if len(host.Ports) != 25 {
 		t.Fatalf("expected 25 ports, got %d", len(host.Ports))
 	}
@@ -42,6 +45,20 @@ func TestParseXMLSampleFile(t *testing.T) {
 		if p.Service == "" {
 			t.Fatalf("expected service name for port %d", p.PortNumber)
 		}
+	}
+}
+
+func TestParseXMLWithMetadataIncludesNmapArgs(t *testing.T) {
+	xml := `<nmaprun args="nmap -sn 10.0.0.0/24"><host><status state="up"/><address addr="10.0.0.1" addrtype="ipv4"/></host></nmaprun>`
+	obs, metadata, err := ParseXMLWithMetadata(strings.NewReader(xml))
+	if err != nil {
+		t.Fatalf("parse xml with metadata: %v", err)
+	}
+	if metadata.NmapArgs != "nmap -sn 10.0.0.0/24" {
+		t.Fatalf("unexpected nmap args: %q", metadata.NmapArgs)
+	}
+	if len(obs.Hosts) != 1 || obs.Hosts[0].HostState != "up" {
+		t.Fatalf("unexpected observation output: %#v", obs)
 	}
 }
 

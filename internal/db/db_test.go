@@ -20,11 +20,15 @@ func TestMigrationsCreateSchema(t *testing.T) {
 	defer db.Close()
 
 	wantTables := map[string]struct{}{
-		"project":          {},
-		"scope_definition": {},
-		"scan_import":      {},
-		"host":             {},
-		"port":             {},
+		"project":                 {},
+		"scope_definition":        {},
+		"scan_import":             {},
+		"scan_import_intent":      {},
+		"host":                    {},
+		"host_observation":        {},
+		"port":                    {},
+		"port_observation":        {},
+		"expected_asset_baseline": {},
 	}
 	tables := mustListStrings(t, db, `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';`)
 	for name := range wantTables {
@@ -34,14 +38,25 @@ func TestMigrationsCreateSchema(t *testing.T) {
 	}
 
 	wantIndexes := map[string]struct{}{
-		"idx_host_project":  {},
-		"idx_host_ip":       {},
-		"idx_host_in_scope": {},
-		"idx_port_host":     {},
-		"idx_port_status":   {},
-		"idx_port_number":   {},
-		"idx_port_protocol": {},
-		"idx_scope_project": {},
+		"idx_host_project":                    {},
+		"idx_host_ip":                         {},
+		"idx_host_in_scope":                   {},
+		"idx_host_ip_int":                     {},
+		"idx_port_host":                       {},
+		"idx_port_status":                     {},
+		"idx_port_number":                     {},
+		"idx_port_protocol":                   {},
+		"idx_scope_project":                   {},
+		"idx_scan_import_intent_scan_import":  {},
+		"idx_scan_import_intent_intent":       {},
+		"idx_host_observation_project":        {},
+		"idx_host_observation_project_ip":     {},
+		"idx_host_observation_import":         {},
+		"idx_port_observation_project":        {},
+		"idx_port_observation_project_ip":     {},
+		"idx_port_observation_import":         {},
+		"idx_port_observation_open":           {},
+		"idx_expected_asset_baseline_project": {},
 	}
 	indexes := mustListStrings(t, db, `SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%';`)
 	for name := range wantIndexes {
@@ -56,11 +71,41 @@ func TestMigrationsCreateSchema(t *testing.T) {
 	if !hasUniqueIndex(t, db, "port") {
 		t.Fatalf("expected unique index on port(host_id, port_number, protocol)")
 	}
+	if !hasUniqueIndex(t, db, "scan_import_intent") {
+		t.Fatalf("expected unique index on scan_import_intent(scan_import_id, intent)")
+	}
+	if !hasUniqueIndex(t, db, "host_observation") {
+		t.Fatalf("expected unique index on host_observation(scan_import_id, ip_address)")
+	}
+	if !hasUniqueIndex(t, db, "port_observation") {
+		t.Fatalf("expected unique index on port_observation(scan_import_id, ip_address, port_number, protocol)")
+	}
+	if !hasUniqueIndex(t, db, "expected_asset_baseline") {
+		t.Fatalf("expected unique index on expected_asset_baseline(project_id, definition)")
+	}
 	if !hasCascadeForeignKey(t, db, "host", "project") {
 		t.Fatalf("expected host to reference project with ON DELETE CASCADE")
 	}
 	if !hasCascadeForeignKey(t, db, "port", "host") {
 		t.Fatalf("expected port to reference host with ON DELETE CASCADE")
+	}
+	if !hasCascadeForeignKey(t, db, "scan_import_intent", "scan_import") {
+		t.Fatalf("expected scan_import_intent to reference scan_import with ON DELETE CASCADE")
+	}
+	if !hasCascadeForeignKey(t, db, "host_observation", "scan_import") {
+		t.Fatalf("expected host_observation to reference scan_import with ON DELETE CASCADE")
+	}
+	if !hasCascadeForeignKey(t, db, "host_observation", "project") {
+		t.Fatalf("expected host_observation to reference project with ON DELETE CASCADE")
+	}
+	if !hasCascadeForeignKey(t, db, "port_observation", "scan_import") {
+		t.Fatalf("expected port_observation to reference scan_import with ON DELETE CASCADE")
+	}
+	if !hasCascadeForeignKey(t, db, "port_observation", "project") {
+		t.Fatalf("expected port_observation to reference project with ON DELETE CASCADE")
+	}
+	if !hasCascadeForeignKey(t, db, "expected_asset_baseline", "project") {
+		t.Fatalf("expected expected_asset_baseline to reference project with ON DELETE CASCADE")
 	}
 }
 

@@ -9,14 +9,20 @@ import (
 
 // Internal parsing structs matching nmap XML.
 type nmapRun struct {
+	Args  string     `xml:"args,attr"`
 	Hosts []nmapHost `xml:"host"`
 }
 
 type nmapHost struct {
 	Addresses []nmapAddress `xml:"address"`
+	Status    nmapHostState `xml:"status"`
 	Hostnames nmapHostnames `xml:"hostnames"`
 	Ports     []nmapPort    `xml:"ports>port"`
 	OS        nmapOS        `xml:"os"`
+}
+
+type nmapHostState struct {
+	State string `xml:"state,attr"`
 }
 
 type nmapAddress struct {
@@ -65,10 +71,18 @@ type nmapOSMatch struct {
 }
 
 func parseXML(r io.Reader) (Observations, error) {
+	obs, _, err := parseXMLWithMetadata(r)
+	if err != nil {
+		return Observations{}, err
+	}
+	return obs, nil
+}
+
+func parseXMLWithMetadata(r io.Reader) (Observations, ParseMetadata, error) {
 	var run nmapRun
 	dec := xml.NewDecoder(r)
 	if err := dec.Decode(&run); err != nil {
-		return Observations{}, fmt.Errorf("decode xml: %w", err)
+		return Observations{}, ParseMetadata{}, fmt.Errorf("decode xml: %w", err)
 	}
 
 	var obs Observations
@@ -76,7 +90,7 @@ func parseXML(r io.Reader) (Observations, error) {
 		host := observationFromHost(h)
 		obs.Hosts = append(obs.Hosts, host)
 	}
-	return obs, nil
+	return obs, ParseMetadata{NmapArgs: strings.TrimSpace(run.Args)}, nil
 }
 
 func firstIPv4(addrs []nmapAddress) string {
@@ -125,6 +139,7 @@ func observationFromHost(h nmapHost) HostObservation {
 		IPAddress: firstIPv4(h.Addresses),
 		Hostname:  firstHostname(h.Hostnames),
 		OSGuess:   firstOS(h.OS),
+		HostState: strings.ToLower(strings.TrimSpace(h.Status.State)),
 	}
 	for _, p := range h.Ports {
 		host.Ports = append(host.Ports, PortObservation{

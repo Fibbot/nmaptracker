@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NmapTracker - Coverage Matrix</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <script src="js/app.js"></script>
+    <script src="js/coverage_matrix.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <div class="breadcrumb">
+            <a href="index.html">Projects</a>
+            <span class="separator">/</span>
+            <a href="#" id="nav-project-name">Project</a>
+            <span class="separator">/</span>
+            <span class="current">Coverage Matrix</span>
+        </div>
+
+        <div class="page-header">
+            <h1 class="page-title">Coverage Matrix</h1>
+            <div class="flex-row" style="gap: 10px; flex-wrap: wrap;">
+                <a id="back-to-project" class="btn btn-secondary" href="#">Back to Dashboard</a>
+                <label class="flex-row" style="margin: 0; gap: 8px; align-items: center;">
+                    <input type="checkbox" id="preview-toggle" checked>
+                    Include Missing Preview
+                </label>
+                <label class="flex-row" style="margin: 0; gap: 8px; align-items: center;">
+                    Preview Size
+                    <input type="number" id="preview-size" min="1" max="50" value="5" style="width: 90px;">
+                </label>
+                <button id="refresh-btn" class="btn btn-primary">Refresh</button>
+            </div>
+            <p class="text-muted" id="matrix-meta" style="margin-top: 10px;"></p>
+        </div>
+
+        <div id="error-msg" class="error"></div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr id="matrix-header-row">
+                        <th style="min-width: 240px;">Segment</th>
+                    </tr>
+                </thead>
+                <tbody id="matrix-rows">
+                    <!-- Filled by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal" id="missing-modal" style="display:none;">
+        <div class="modal-backdrop" onclick="closeCoverageMissingModal()"></div>
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h3 id="missing-modal-title">Missing Hosts</h3>
+                <button class="btn btn-secondary" onclick="closeCoverageMissingModal()">Close</button>
+            </div>
+            <div class="modal-body" style="font-family: var(--font-sans); white-space: normal;">
+                <div class="flex-row" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div id="missing-modal-summary" class="text-muted"></div>
+                    <a id="missing-hosts-link" class="btn btn-secondary" target="_blank" rel="noopener">Open Hosts</a>
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>IP Address</th>
+                                <th>Hostname</th>
+                                <th style="width: 90px;">Host</th>
+                            </tr>
+                        </thead>
+                        <tbody id="missing-host-list"></tbody>
+                    </table>
+                </div>
+
+                <div class="pagination" style="margin-top: 14px;">
+                    <button id="missing-prev-btn" class="pagination-btn">Previous</button>
+                    <span id="missing-page-info" class="pagination-info">Page 1</span>
+                    <button id="missing-next-btn" class="pagination-btn">Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

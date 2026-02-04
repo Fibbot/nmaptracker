@@ -2,6 +2,7 @@ package importer
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -224,5 +225,156 @@ func TestImportTransactionRollbackOnError(t *testing.T) {
 	}
 	if len(hosts) != 0 {
 		t.Fatalf("expected no hosts after rollback")
+	}
+
+	var hostObsCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM host_observation WHERE project_id = ?`, project.ID).Scan(&hostObsCount); err != nil {
+		t.Fatalf("count host observations: %v", err)
+	}
+	if hostObsCount != 0 {
+		t.Fatalf("expected no host observations after rollback, got %d", hostObsCount)
+	}
+
+	var portObsCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM port_observation WHERE project_id = ?`, project.ID).Scan(&portObsCount); err != nil {
+		t.Fatalf("count port observations: %v", err)
+	}
+	if portObsCount != 0 {
+		t.Fatalf("expected no port observations after rollback, got %d", portObsCount)
+	}
+
+	var intentCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM scan_import_intent`).Scan(&intentCount); err != nil {
+		t.Fatalf("count intents: %v", err)
+	}
+	if intentCount != 0 {
+		t.Fatalf("expected no intents after rollback, got %d", intentCount)
+	}
+}
+
+func TestImportXMLWithOptionsPersistsAutoAndManualIntents(t *testing.T) {
+	database := newTestDB(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("intents")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	matcher := mustMatcher(t, []string{"0.0.0.0/0"})
+	xmlPayload := `<?xml version="1.0"?>
+<nmaprun args="nmap -sn -sU --top-ports 1000 -p- --script vuln 192.0.2.10">
+  <host>
+    <status state="up"/>
+    <address addr="192.0.2.10" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="80">
+        <state state="open"/>
+        <service name="http"/>
+      </port>
+      <port protocol="udp" portid="53">
+        <state state="open"/>
+        <service name="domain"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>`
+
+	stats, err := ImportXMLWithOptions(
+		database,
+		matcher,
+		project.ID,
+		"scan.xml",
+		strings.NewReader(xmlPayload),
+		ImportOptions{ManualIntents: []string{db.IntentTop1KTCP}},
+		time.Now().UTC(),
+	)
+	if err != nil {
+		t.Fatalf("import xml with options: %v", err)
+	}
+
+	imports, err := database.ListScanImportsWithIntents(project.ID)
+	if err != nil {
+		t.Fatalf("list imports with intents: %v", err)
+	}
+	if len(imports) != 1 {
+		t.Fatalf("expected 1 import, got %d", len(imports))
+	}
+	if imports[0].ID != stats.ScanImport.ID {
+		t.Fatalf("unexpected import id %d", imports[0].ID)
+	}
+
+	sourcesByIntent := map[string]string{}
+	for _, intent := range imports[0].Intents {
+		sourcesByIntent[intent.Intent] = intent.Source
+	}
+
+	if sourcesByIntent[db.IntentTop1KTCP] != db.IntentSourceManual {
+		t.Fatalf("expected %s to remain manual, got %q", db.IntentTop1KTCP, sourcesByIntent[db.IntentTop1KTCP])
+	}
+	if sourcesByIntent[db.IntentPingSweep] != db.IntentSourceAuto {
+		t.Fatalf("expected ping_sweep auto source")
+	}
+	if sourcesByIntent[db.IntentAllTCP] != db.IntentSourceAuto {
+		t.Fatalf("expected all_tcp auto source")
+	}
+	if sourcesByIntent[db.IntentTopUDP] != db.IntentSourceAuto {
+		t.Fatalf("expected top_udp auto source")
+	}
+	if sourcesByIntent[db.IntentVulnNSE] != db.IntentSourceAuto {
+		t.Fatalf("expected vuln_nse auto source")
+	}
+}
+
+func TestImportXMLPersistsHostAndPortObservations(t *testing.T) {
+	database := newTestDB(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("observations")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	matcher := mustMatcher(t, []string{"0.0.0.0/0"})
+	xmlPayload := `<?xml version="1.0"?>
+<nmaprun args="nmap --top-ports 1000 198.51.100.5">
+  <host>
+    <status state="up"/>
+    <address addr="198.51.100.5" addrtype="ipv4"/>
+    <hostnames><hostname name="scan-host"/></hostnames>
+    <ports>
+      <port protocol="tcp" portid="443">
+        <state state="open"/>
+        <service name="https" product="nginx" version="1.25"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>`
+
+	stats, err := ImportXML(database, matcher, project.ID, "obs.xml", strings.NewReader(xmlPayload), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("import xml: %v", err)
+	}
+
+	hostObs, err := database.ListHostObservationsByImport(project.ID, stats.ScanImport.ID)
+	if err != nil {
+		t.Fatalf("list host observations: %v", err)
+	}
+	if len(hostObs) != 1 {
+		t.Fatalf("expected 1 host observation, got %d", len(hostObs))
+	}
+	if hostObs[0].IPAddress != "198.51.100.5" || hostObs[0].HostState != "up" {
+		t.Fatalf("unexpected host observation: %#v", hostObs[0])
+	}
+
+	portObs, err := database.ListPortObservationsByImport(project.ID, stats.ScanImport.ID)
+	if err != nil {
+		t.Fatalf("list port observations: %v", err)
+	}
+	if len(portObs) != 1 {
+		t.Fatalf("expected 1 port observation, got %d", len(portObs))
+	}
+	if portObs[0].PortNumber != 443 || portObs[0].Protocol != "tcp" || portObs[0].State != "open" {
+		t.Fatalf("unexpected port observation: %#v", portObs[0])
 	}
 }

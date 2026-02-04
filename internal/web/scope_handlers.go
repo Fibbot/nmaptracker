@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -207,7 +208,16 @@ func (s *Server) apiImportXML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Import
-	stats, err := importer.ImportXML(s.DB, matcher, projectID, header.Filename, file, time.Now().UTC())
+	manualIntents := collectManualImportIntents(r.MultipartForm.Value["intent"], r.MultipartForm.Value["intents"])
+	stats, err := importer.ImportXMLWithOptions(
+		s.DB,
+		matcher,
+		projectID,
+		header.Filename,
+		file,
+		importer.ImportOptions{ManualIntents: manualIntents},
+		time.Now().UTC(),
+	)
 	if err != nil {
 		s.serverError(w, err)
 		return
@@ -222,4 +232,19 @@ func (s *Server) apiImportXML(w http.ResponseWriter, r *http.Request) {
 		"hosts_in_scope":  stats.InScope,
 		"hosts_out_scope": stats.OutScope,
 	}, http.StatusOK)
+}
+
+func collectManualImportIntents(values ...[]string) []string {
+	var intents []string
+	for _, group := range values {
+		for _, value := range group {
+			for _, item := range strings.Split(value, ",") {
+				item = strings.TrimSpace(item)
+				if item != "" {
+					intents = append(intents, item)
+				}
+			}
+		}
+	}
+	return intents
 }

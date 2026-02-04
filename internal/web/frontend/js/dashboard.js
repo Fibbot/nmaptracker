@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Links
         document.getElementById('view-hosts-btn').href = `hosts.html?id=${projectId}`;
         document.getElementById('view-all-scans-btn').href = `scan_results.html?id=${projectId}`;
+        document.getElementById('view-coverage-matrix-btn').href = `coverage_matrix.html?id=${projectId}`;
         document.getElementById('link-total-hosts').href = `hosts.html?id=${projectId}`;
         document.getElementById('link-in-scope').href = `hosts.html?id=${projectId}&in_scope=true`;
         document.getElementById('link-out-scope').href = `hosts.html?id=${projectId}&in_scope=false`;
