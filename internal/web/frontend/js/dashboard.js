@@ -55,6 +55,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Setup Import Listeners
         setupImport();
 
+        // Gap Dashboard
+        loadGapDashboard();
+
     } catch (err) {
         console.error(err);
         document.getElementById('error-msg').textContent = err.message;
@@ -95,6 +98,62 @@ async function loadDashboardStats() {
     } catch (err) {
         console.error("Failed to refresh stats", err);
     }
+}
+
+async function loadGapDashboard() {
+    const projectId = getProjectId();
+    if (!projectId) return;
+
+    // Drill-down links
+    document.getElementById('gap-link-never-scanned').href = `hosts.html?id=${projectId}&in_scope=true`;
+    document.getElementById('gap-link-open-ports').href = `scan_results.html?id=${projectId}&status=scanned`;
+    document.getElementById('gap-link-needs-ping').href = `hosts.html?id=${projectId}&in_scope=true`;
+    document.getElementById('gap-link-needs-top1k').href = `hosts.html?id=${projectId}&in_scope=true`;
+    document.getElementById('gap-link-needs-all').href = `hosts.html?id=${projectId}&in_scope=true`;
+
+    try {
+        const gaps = await api(`/projects/${projectId}/gaps?preview_size=10&include_lists=true`);
+        renderGapDashboard(gaps);
+    } catch (err) {
+        console.error('Failed to load gap dashboard', err);
+        showToast(`Gap dashboard failed: ${err.message}`, 'error');
+    }
+}
+
+function renderGapDashboard(gaps) {
+    const summary = gaps && gaps.summary ? gaps.summary : {};
+    document.getElementById('gap-count-never-scanned').textContent = summary.in_scope_never_scanned || 0;
+    document.getElementById('gap-count-open-ports').textContent = summary.open_ports_scanned_or_flagged || 0;
+    document.getElementById('gap-count-needs-ping').textContent = summary.needs_ping_sweep || 0;
+    document.getElementById('gap-count-needs-top1k').textContent = summary.needs_top_1k_tcp || 0;
+    document.getElementById('gap-count-needs-all').textContent = summary.needs_all_tcp || 0;
+
+    const lists = gaps && gaps.lists ? gaps.lists : {};
+    renderGapHostList('gap-list-never-scanned', lists.in_scope_never_scanned, item => `${item.ip_address}${item.hostname ? ` (${item.hostname})` : ''}`);
+    renderGapHostList('gap-list-needs-ping', lists.needs_ping_sweep, item => `${item.ip_address}${item.hostname ? ` (${item.hostname})` : ''}`);
+    renderGapHostList('gap-list-needs-top1k', lists.needs_top_1k_tcp, item => `${item.ip_address}${item.hostname ? ` (${item.hostname})` : ''}`);
+    renderGapHostList('gap-list-needs-all', lists.needs_all_tcp, item => `${item.ip_address}${item.hostname ? ` (${item.hostname})` : ''}`);
+    renderGapHostList('gap-list-open-ports', lists.open_ports_scanned_or_flagged, item => `${item.ip_address} ${item.port_number}/${item.protocol} [${item.work_status}]`);
+}
+
+function renderGapHostList(listId, items, formatter) {
+    const list = document.getElementById(listId);
+    if (!list) return;
+
+    list.innerHTML = '';
+    if (!items || items.length === 0) {
+        const empty = document.createElement('li');
+        empty.className = 'text-muted';
+        empty.textContent = 'None';
+        list.appendChild(empty);
+        return;
+    }
+
+    items.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = formatter(item);
+        list.appendChild(li);
+    });
 }
 
 // Scope Functions
@@ -394,3 +453,4 @@ window.toggleExportMenu = toggleExportMenu;
 window.toggleEditName = toggleEditName;
 window.saveProjectName = saveProjectName;
 window.cancelRename = cancelRename;
+window.loadGapDashboard = loadGapDashboard;

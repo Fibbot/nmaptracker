@@ -664,3 +664,154 @@ func insertCoverageImportForWebTest(database *db.DB, projectID int64, intent str
 	}
 	return tx.Commit()
 }
+
+func TestGapsEndpointSummaryAndLists(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("Lima")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	h1, _ := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.20.0.1", InScope: true})
+	h2, _ := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.20.0.2", InScope: true})
+	_, _ = database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.20.0.3", InScope: false})
+
+	if _, err := database.UpsertPort(db.Port{HostID: h1.ID, PortNumber: 80, Protocol: "tcp", State: "open", WorkStatus: "scanned", Service: "http"}); err != nil {
+		t.Fatalf("insert port: %v", err)
+	}
+	if _, err := database.UpsertPort(db.Port{HostID: h2.ID, PortNumber: 53, Protocol: "udp", State: "open", WorkStatus: "flagged", Service: "domain"}); err != nil {
+		t.Fatalf("insert port: %v", err)
+	}
+
+	if err := insertCoverageImportForWebTest(database, project.ID, db.IntentTop1KTCP, []string{h1.IPAddress}); err != nil {
+		t.Fatalf("insert import: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/gaps?preview_size=2&include_lists=true",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp struct {
+		Summary struct {
+			InScopeNeverScanned       int `json:"in_scope_never_scanned"`
+			OpenPortsScannedOrFlagged int `json:"open_ports_scanned_or_flagged"`
+			NeedsPingSweep            int `json:"needs_ping_sweep"`
+			NeedsTop1KTCP             int `json:"needs_top_1k_tcp"`
+			NeedsAllTCP               int `json:"needs_all_tcp"`
+		} `json:"summary"`
+		Lists struct {
+			InScopeNeverScanned       []db.GapHost        `json:"in_scope_never_scanned"`
+			OpenPortsScannedOrFlagged []db.GapOpenPortRow `json:"open_ports_scanned_or_flagged"`
+			NeedsPingSweep            []db.GapHost        `json:"needs_ping_sweep"`
+			NeedsTop1KTCP             []db.GapHost        `json:"needs_top_1k_tcp"`
+			NeedsAllTCP               []db.GapHost        `json:"needs_all_tcp"`
+		} `json:"lists"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if resp.Summary.InScopeNeverScanned != 1 || resp.Summary.OpenPortsScannedOrFlagged != 2 {
+		t.Fatalf("unexpected gaps summary: %+v", resp.Summary)
+	}
+	if resp.Summary.NeedsPingSweep != 1 || resp.Summary.NeedsTop1KTCP != 1 || resp.Summary.NeedsAllTCP != 2 {
+		t.Fatalf("unexpected milestone summary in gaps: %+v", resp.Summary)
+	}
+	if len(resp.Lists.InScopeNeverScanned) != 1 || resp.Lists.InScopeNeverScanned[0].IPAddress != h2.IPAddress {
+		t.Fatalf("unexpected never scanned list: %+v", resp.Lists.InScopeNeverScanned)
+	}
+	if len(resp.Lists.OpenPortsScannedOrFlagged) != 2 {
+		t.Fatalf("expected 2 open-port rows, got %d", len(resp.Lists.OpenPortsScannedOrFlagged))
+	}
+
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/gaps?include_lists=not_bool",
+		nil,
+	)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid include_lists, got %d", rec.Code)
+	}
+}
+
+func TestMilestoneQueuesEndpointMirrorsGapsMilestoneSummary(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("Mike")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	h1, _ := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.30.0.1", InScope: true})
+	h2, _ := database.UpsertHost(db.Host{ProjectID: project.ID, IPAddress: "10.30.0.2", InScope: true})
+
+	if err := insertCoverageImportForWebTest(database, project.ID, db.IntentAllTCP, []string{h1.IPAddress}); err != nil {
+		t.Fatalf("insert import: %v", err)
+	}
+
+	gapsReq := httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/gaps", nil)
+	gapsRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(gapsRec, gapsReq)
+	if gapsRec.Code != http.StatusOK {
+		t.Fatalf("gaps expected 200, got %d", gapsRec.Code)
+	}
+
+	queuesReq := httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/milestones", nil)
+	queuesRec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(queuesRec, queuesReq)
+	if queuesRec.Code != http.StatusOK {
+		t.Fatalf("milestones expected 200, got %d", queuesRec.Code)
+	}
+
+	var gapsResp struct {
+		Summary struct {
+			NeedsPingSweep int `json:"needs_ping_sweep"`
+			NeedsTop1KTCP  int `json:"needs_top_1k_tcp"`
+			NeedsAllTCP    int `json:"needs_all_tcp"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(gapsRec.Body.Bytes(), &gapsResp); err != nil {
+		t.Fatalf("unmarshal gaps: %v", err)
+	}
+
+	var queuesResp struct {
+		Summary struct {
+			NeedsPingSweep int `json:"needs_ping_sweep"`
+			NeedsTop1KTCP  int `json:"needs_top_1k_tcp"`
+			NeedsAllTCP    int `json:"needs_all_tcp"`
+		} `json:"summary"`
+		Lists struct {
+			NeedsPingSweep []db.GapHost `json:"needs_ping_sweep"`
+			NeedsTop1KTCP  []db.GapHost `json:"needs_top_1k_tcp"`
+			NeedsAllTCP    []db.GapHost `json:"needs_all_tcp"`
+		} `json:"lists"`
+	}
+	if err := json.Unmarshal(queuesRec.Body.Bytes(), &queuesResp); err != nil {
+		t.Fatalf("unmarshal milestone queues: %v", err)
+	}
+
+	if queuesResp.Summary != gapsResp.Summary {
+		t.Fatalf("milestone summary mismatch gaps=%+v queues=%+v", gapsResp.Summary, queuesResp.Summary)
+	}
+	if len(queuesResp.Lists.NeedsPingSweep) != 1 || queuesResp.Lists.NeedsPingSweep[0].IPAddress != h2.IPAddress {
+		t.Fatalf("unexpected needs_ping_sweep list: %+v", queuesResp.Lists.NeedsPingSweep)
+	}
+	if len(queuesResp.Lists.NeedsTop1KTCP) != 1 || queuesResp.Lists.NeedsTop1KTCP[0].IPAddress != h2.IPAddress {
+		t.Fatalf("unexpected needs_top_1k_tcp list: %+v", queuesResp.Lists.NeedsTop1KTCP)
+	}
+	if len(queuesResp.Lists.NeedsAllTCP) != 1 || queuesResp.Lists.NeedsAllTCP[0].IPAddress != h2.IPAddress {
+		t.Fatalf("unexpected needs_all_tcp list: %+v", queuesResp.Lists.NeedsAllTCP)
+	}
+}

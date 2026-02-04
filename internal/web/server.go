@@ -59,6 +59,8 @@ func NewServer(database *db.DB) *Server {
 		r.Put("/projects/{id}/imports/{importID}/intents", server.apiSetImportIntents)
 		r.Get("/projects/{id}/coverage-matrix", server.apiGetCoverageMatrix)
 		r.Get("/projects/{id}/coverage-matrix/missing", server.apiGetCoverageMatrixMissing)
+		r.Get("/projects/{id}/gaps", server.apiGetGaps)
+		r.Get("/projects/{id}/queues/milestones", server.apiGetMilestoneQueues)
 
 		// Exports (files)
 		r.Get("/projects/{id}/export", server.handleProjectExport)

@@ -169,6 +169,59 @@
                 </div>
             </div>
         </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Gap Dashboard</h3>
+                <button class="btn btn-secondary" onclick="loadGapDashboard()">Refresh Gaps</button>
+            </div>
+
+            <div class="stats-grid" style="margin-bottom: 18px;">
+                <a id="gap-link-never-scanned" class="stat-item clickable" href="#">
+                    <span class="stat-label">In-Scope Never Scanned</span>
+                    <span class="stat-value" id="gap-count-never-scanned">0</span>
+                </a>
+                <a id="gap-link-open-ports" class="stat-item clickable" href="#">
+                    <span class="stat-label">Open Ports (Scanned/Flagged)</span>
+                    <span class="stat-value" id="gap-count-open-ports">0</span>
+                </a>
+                <a id="gap-link-needs-ping" class="stat-item clickable" href="#">
+                    <span class="stat-label">Needs Ping Sweep</span>
+                    <span class="stat-value" id="gap-count-needs-ping">0</span>
+                </a>
+                <a id="gap-link-needs-top1k" class="stat-item clickable" href="#">
+                    <span class="stat-label">Needs Top 1k TCP</span>
+                    <span class="stat-value" id="gap-count-needs-top1k">0</span>
+                </a>
+                <a id="gap-link-needs-all" class="stat-item clickable" href="#">
+                    <span class="stat-label">Needs All TCP</span>
+                    <span class="stat-value" id="gap-count-needs-all">0</span>
+                </a>
+            </div>
+
+            <div class="stats-grid">
+                <div>
+                    <div class="text-muted" style="margin-bottom: 8px;">Never Scanned (Preview)</div>
+                    <ul id="gap-list-never-scanned" class="gap-preview-list"></ul>
+                </div>
+                <div>
+                    <div class="text-muted" style="margin-bottom: 8px;">Open Ports (Preview)</div>
+                    <ul id="gap-list-open-ports" class="gap-preview-list"></ul>
+                </div>
+                <div>
+                    <div class="text-muted" style="margin-bottom: 8px;">Needs Ping Sweep</div>
+                    <ul id="gap-list-needs-ping" class="gap-preview-list"></ul>
+                </div>
+                <div>
+                    <div class="text-muted" style="margin-bottom: 8px;">Needs Top 1k TCP</div>
+                    <ul id="gap-list-needs-top1k" class="gap-preview-list"></ul>
+                </div>
+                <div>
+                    <div class="text-muted" style="margin-bottom: 8px;">Needs All TCP</div>
+                    <ul id="gap-list-needs-all" class="gap-preview-list"></ul>
+                </div>
+            </div>
+        </div>
     </div>
 </body>
 
