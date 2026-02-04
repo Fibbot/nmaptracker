@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NmapTracker - Import Delta</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <script src="js/app.js"></script>
+    <script src="js/import_delta.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <div class="breadcrumb">
+            <a href="index.html">Projects</a>
+            <span class="separator">/</span>
+            <a href="#" id="nav-project-name">Project</a>
+            <span class="separator">/</span>
+            <span class="current">Import Delta</span>
+        </div>
+
+        <div class="page-header" style="align-items: flex-end; gap: 16px; flex-wrap: wrap;">
+            <div>
+                <h1 class="page-title">Import Delta</h1>
+                <p id="delta-meta" class="text-muted" style="margin-top: 8px;"></p>
+            </div>
+            <div class="flex-row" style="gap: 8px; flex-wrap: wrap;">
+                <a id="back-to-project" class="btn btn-secondary" href="#">Back to Dashboard</a>
+                <button id="compare-btn" class="btn btn-primary">Compare</button>
+                <button id="export-delta-btn" class="btn btn-secondary" disabled>Export JSON</button>
+            </div>
+        </div>
+
+        <div id="error-msg" class="error"></div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Select Imports</h3>
+            </div>
+            <div class="flex-row" style="gap: 16px; flex-wrap: wrap;">
+                <div style="min-width: 280px;">
+                    <label for="base-import-select">Base Import</label>
+                    <select id="base-import-select" style="width: 100%;"></select>
+                </div>
+                <div style="min-width: 280px;">
+                    <label for="target-import-select">Target Import</label>
+                    <select id="target-import-select" style="width: 100%;"></select>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-section">
+            <div class="stats-card">
+                <div class="stats-card-title">Net New Hosts</div>
+                <div class="stat-value" id="sum-net-new-hosts">0</div>
+            </div>
+            <div class="stats-card">
+                <div class="stats-card-title">Disappeared Hosts</div>
+                <div class="stat-value" id="sum-disappeared-hosts">0</div>
+            </div>
+            <div class="stats-card">
+                <div class="stats-card-title">New Open Exposures</div>
+                <div class="stat-value" id="sum-net-new-exposures">0</div>
+            </div>
+            <div class="stats-card">
+                <div class="stats-card-title">Disappeared Open Exposures</div>
+                <div class="stat-value" id="sum-disappeared-exposures">0</div>
+            </div>
+            <div class="stats-card">
+                <div class="stats-card-title">Changed Fingerprints</div>
+                <div class="stat-value" id="sum-changed-fingerprints">0</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Delta Details</h3>
+            </div>
+            <div class="flex-row" style="gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+                <button class="btn btn-secondary delta-tab" data-tab="net_new_hosts">Net New Hosts</button>
+                <button class="btn btn-secondary delta-tab" data-tab="disappeared_hosts">Disappeared Hosts</button>
+                <button class="btn btn-secondary delta-tab" data-tab="net_new_open_exposures">New Open Exposures</button>
+                <button class="btn btn-secondary delta-tab" data-tab="disappeared_open_exposures">Disappeared Open Exposures</button>
+                <button class="btn btn-secondary delta-tab" data-tab="changed_service_fingerprints">Changed Fingerprints</button>
+            </div>
+
+            <div id="delta-list-container" class="table-container"></div>
+        </div>
+    </div>
+</body>
+
+</html>

@@ -47,6 +47,24 @@ func (db *DB) ListScanImports(projectID int64) ([]ScanImport, error) {
 	return imports, nil
 }
 
+// GetScanImportForProject fetches one scan import scoped to a project.
+func (db *DB) GetScanImportForProject(projectID, importID int64) (ScanImport, bool, error) {
+	var item ScanImport
+	err := db.QueryRow(
+		`SELECT id, project_id, filename, import_time, hosts_found, ports_found
+		   FROM scan_import
+		  WHERE id = ? AND project_id = ?`,
+		importID, projectID,
+	).Scan(&item.ID, &item.ProjectID, &item.Filename, &item.ImportTime, &item.HostsFound, &item.PortsFound)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return ScanImport{}, false, nil
+		}
+		return ScanImport{}, false, fmt.Errorf("get scan import for project: %w", err)
+	}
+	return item, true, nil
+}
+
 // ListScanImportsWithIntents returns scan imports with their intent tags.
 func (db *DB) ListScanImportsWithIntents(projectID int64) ([]ScanImportWithIntents, error) {
 	rows, err := db.Query(

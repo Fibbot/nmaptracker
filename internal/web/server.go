@@ -61,6 +61,7 @@ func NewServer(database *db.DB) *Server {
 		r.Get("/projects/{id}/coverage-matrix/missing", server.apiGetCoverageMatrixMissing)
 		r.Get("/projects/{id}/gaps", server.apiGetGaps)
 		r.Get("/projects/{id}/queues/milestones", server.apiGetMilestoneQueues)
+		r.Get("/projects/{id}/delta", server.apiGetImportDelta)
 
 		// Exports (files)
 		r.Get("/projects/{id}/export", server.handleProjectExport)

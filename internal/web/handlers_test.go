@@ -815,3 +815,184 @@ func TestMilestoneQueuesEndpointMirrorsGapsMilestoneSummary(t *testing.T) {
 		t.Fatalf("unexpected needs_all_tcp list: %+v", queuesResp.Lists.NeedsAllTCP)
 	}
 }
+
+func TestImportDeltaEndpointValidation(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	projectA, _ := database.CreateProject("November")
+	projectB, _ := database.CreateProject("Oscar")
+
+	baseA, err := insertDeltaImportForWebTest(database, projectA.ID, "base.xml", []db.HostObservation{}, []db.PortObservation{})
+	if err != nil {
+		t.Fatalf("insert base import: %v", err)
+	}
+	targetA, err := insertDeltaImportForWebTest(database, projectA.ID, "target.xml", []db.HostObservation{}, []db.PortObservation{})
+	if err != nil {
+		t.Fatalf("insert target import: %v", err)
+	}
+	foreignImport, err := insertDeltaImportForWebTest(database, projectB.ID, "foreign.xml", []db.HostObservation{}, []db.PortObservation{})
+	if err != nil {
+		t.Fatalf("insert foreign import: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(projectA.ID, 10)+"/delta", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing query params, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"http://localhost:8080/api/projects/"+strconv.FormatInt(projectA.ID, 10)+"/delta?base_import_id="+strconv.FormatInt(baseA, 10)+"&target_import_id="+strconv.FormatInt(baseA, 10),
+		nil,
+	)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for same import IDs, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"http://localhost:8080/api/projects/"+strconv.FormatInt(projectA.ID, 10)+"/delta?base_import_id="+strconv.FormatInt(baseA, 10)+"&target_import_id="+strconv.FormatInt(foreignImport, 10),
+		nil,
+	)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for non-project import, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"http://localhost:8080/api/projects/"+strconv.FormatInt(projectA.ID, 10)+"/delta?base_import_id="+strconv.FormatInt(baseA, 10)+"&target_import_id="+strconv.FormatInt(targetA, 10),
+		nil,
+	)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for valid delta request, got %d", rec.Code)
+	}
+}
+
+func TestImportDeltaEndpointResponse(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, _ := database.CreateProject("Papa")
+
+	baseID, err := insertDeltaImportForWebTest(
+		database,
+		project.ID,
+		"week1.xml",
+		[]db.HostObservation{
+			{IPAddress: "10.80.0.1", Hostname: "base-host", InScope: true, HostState: "up"},
+			{IPAddress: "10.80.0.2", Hostname: "", InScope: true, HostState: "up"},
+		},
+		[]db.PortObservation{
+			{IPAddress: "10.80.0.1", PortNumber: 443, Protocol: "tcp", State: "open", Service: "https", Product: "nginx", Version: "1.20"},
+			{IPAddress: "10.80.0.2", PortNumber: 22, Protocol: "tcp", State: "open", Service: "ssh", Product: "openssh", Version: "8.0"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("insert base import: %v", err)
+	}
+	targetID, err := insertDeltaImportForWebTest(
+		database,
+		project.ID,
+		"week2.xml",
+		[]db.HostObservation{
+			{IPAddress: "10.80.0.1", Hostname: "base-host", InScope: true, HostState: "up"},
+			{IPAddress: "10.80.0.3", Hostname: "new-host", InScope: true, HostState: "up"},
+		},
+		[]db.PortObservation{
+			{IPAddress: "10.80.0.1", PortNumber: 443, Protocol: "tcp", State: "open", Service: "https", Product: "nginx", Version: "1.24"},
+			{IPAddress: "10.80.0.3", PortNumber: 3389, Protocol: "tcp", State: "open|filtered", Service: "ms-wbt-server"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("insert target import: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/delta?base_import_id="+strconv.FormatInt(baseID, 10)+"&target_import_id="+strconv.FormatInt(targetID, 10)+"&preview_size=50&include_lists=true",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp struct {
+		Summary struct {
+			NetNewHosts                int `json:"net_new_hosts"`
+			DisappearedHosts           int `json:"disappeared_hosts"`
+			NetNewOpenExposures        int `json:"net_new_open_exposures"`
+			DisappearedOpenExposures   int `json:"disappeared_open_exposures"`
+			ChangedServiceFingerprints int `json:"changed_service_fingerprints"`
+		} `json:"summary"`
+		Lists struct {
+			NetNewHosts                []db.DeltaHost               `json:"net_new_hosts"`
+			DisappearedHosts           []db.DeltaHost               `json:"disappeared_hosts"`
+			NetNewOpenExposures        []db.DeltaExposure           `json:"net_new_open_exposures"`
+			DisappearedOpenExposures   []db.DeltaExposure           `json:"disappeared_open_exposures"`
+			ChangedServiceFingerprints []db.DeltaChangedFingerprint `json:"changed_service_fingerprints"`
+		} `json:"lists"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if resp.Summary.NetNewHosts != 1 || resp.Summary.DisappearedHosts != 1 {
+		t.Fatalf("unexpected host summary: %+v", resp.Summary)
+	}
+	if resp.Summary.NetNewOpenExposures != 1 || resp.Summary.DisappearedOpenExposures != 1 {
+		t.Fatalf("unexpected exposure summary: %+v", resp.Summary)
+	}
+	if resp.Summary.ChangedServiceFingerprints != 1 {
+		t.Fatalf("unexpected fingerprint summary: %+v", resp.Summary)
+	}
+	if len(resp.Lists.NetNewHosts) != 1 || resp.Lists.NetNewHosts[0].IPAddress != "10.80.0.3" {
+		t.Fatalf("unexpected net_new_hosts list: %+v", resp.Lists.NetNewHosts)
+	}
+	if len(resp.Lists.ChangedServiceFingerprints) != 1 || resp.Lists.ChangedServiceFingerprints[0].After.Version != "1.24" {
+		t.Fatalf("unexpected changed_service_fingerprints list: %+v", resp.Lists.ChangedServiceFingerprints)
+	}
+}
+
+func insertDeltaImportForWebTest(database *db.DB, projectID int64, filename string, hosts []db.HostObservation, ports []db.PortObservation) (int64, error) {
+	tx, err := database.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	record, err := tx.InsertScanImport(db.ScanImport{ProjectID: projectID, Filename: filename})
+	if err != nil {
+		return 0, err
+	}
+
+	for _, host := range hosts {
+		host.ScanImportID = record.ID
+		host.ProjectID = projectID
+		if _, err := tx.InsertHostObservation(host); err != nil {
+			return 0, err
+		}
+	}
+	for _, port := range ports {
+		port.ScanImportID = record.ID
+		port.ProjectID = projectID
+		if _, err := tx.InsertPortObservation(port); err != nil {
+			return 0, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return record.ID, nil
+}
