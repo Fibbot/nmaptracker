@@ -120,6 +120,7 @@ function initDashboardSections(projectId) {
     if (!container) return;
 
     applyDashboardLayout(projectId);
+    updateToggleAllSectionsButtonLabel();
 
     let dragHandleSectionID = '';
     let draggingSectionID = '';
@@ -203,9 +204,35 @@ function initDashboardSections(projectId) {
                 const collapsed = !section.classList.contains('section-collapsed');
                 setSectionCollapsed(section, collapsed);
                 saveDashboardLayout(projectId);
+                updateToggleAllSectionsButtonLabel();
             });
         }
     });
+}
+
+function setAllSectionsCollapsed(projectId, collapsed) {
+    const container = document.getElementById('dashboard-sections');
+    if (!container) return;
+
+    container.querySelectorAll('.dashboard-section').forEach(section => {
+        setSectionCollapsed(section, collapsed);
+    });
+    saveDashboardLayout(projectId);
+    updateToggleAllSectionsButtonLabel();
+}
+
+function areAllSectionsCollapsed() {
+    const container = document.getElementById('dashboard-sections');
+    if (!container) return false;
+    const sections = Array.from(container.querySelectorAll('.dashboard-section'));
+    if (sections.length === 0) return false;
+    return sections.every(section => section.classList.contains('section-collapsed'));
+}
+
+function updateToggleAllSectionsButtonLabel() {
+    const btn = document.getElementById('toggle-all-sections-btn');
+    if (!btn) return;
+    btn.textContent = areAllSectionsCollapsed() ? 'Expand All' : 'Collapse All';
 }
 
 function initBaselineExpectedUnseenControls() {
@@ -301,6 +328,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     initDashboardSections(projectId);
     initBaselineExpectedUnseenControls();
 
+    const toggleAllSectionsBtn = document.getElementById('toggle-all-sections-btn');
+    if (toggleAllSectionsBtn) {
+        toggleAllSectionsBtn.addEventListener('click', () => {
+            const shouldExpandAll = areAllSectionsCollapsed();
+            setAllSectionsCollapsed(projectId, !shouldExpandAll);
+        });
+    }
+
     try {
         const [project, stats] = await Promise.all([
             api(`/projects/${projectId}`),
@@ -330,16 +365,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('link-wf-in-progress').href = `scan_results.html?id=${projectId}&status=in_progress`;
         document.getElementById('link-wf-done').href = `scan_results.html?id=${projectId}&status=done`;
 
-        const exportMenu = document.getElementById('export-menu');
-        exportMenu.innerHTML = `
-            <a href="/api/projects/${projectId}/export?format=json" target="_blank" class="dropdown-item">JSON</a>
-            <a href="/api/projects/${projectId}/export?format=csv" target="_blank" class="dropdown-item">CSV</a>
-            <a href="/api/projects/${projectId}/export?format=text" target="_blank" class="dropdown-item">TXT</a>
-        `;
+        document.getElementById('export-json-btn').href = `/api/projects/${projectId}/export?format=json`;
+        document.getElementById('export-csv-btn').href = `/api/projects/${projectId}/export?format=csv`;
+        document.getElementById('export-text-btn').href = `/api/projects/${projectId}/export?format=text`;
 
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.dropdown')) {
-                document.getElementById('export-menu').style.display = 'none';
+                const menu = document.getElementById('project-tools-menu');
+                if (menu) {
+                    menu.style.display = 'none';
+                }
             }
         });
 
@@ -351,6 +386,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const refreshImportIntents = document.getElementById('refresh-import-intents-btn');
         if (refreshImportIntents) {
             refreshImportIntents.addEventListener('click', () => loadImportIntents());
+        }
+        const saveAllImportIntentsBtn = document.getElementById('save-all-import-intents-btn');
+        if (saveAllImportIntentsBtn) {
+            saveAllImportIntentsBtn.addEventListener('click', () => saveAllImportIntents());
         }
         loadImportIntents();
 
@@ -438,7 +477,7 @@ function renderImportIntents(items) {
     if (!items || items.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 5;
+        td.colSpan = 4;
         td.className = 'text-muted';
         td.style.textAlign = 'center';
         td.textContent = 'No imports yet.';
@@ -488,45 +527,84 @@ function renderImportIntents(items) {
             intentsTd.appendChild(wrapper);
         });
 
-        const saveTd = document.createElement('td');
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'btn btn-primary';
-        saveBtn.style.padding = '6px 10px';
-        saveBtn.style.fontSize = '12px';
-        saveBtn.textContent = 'Save';
-        saveBtn.addEventListener('click', () => saveImportIntents(item.id));
-        saveTd.appendChild(saveBtn);
-
         tr.appendChild(idTd);
         tr.appendChild(timeTd);
         tr.appendChild(fileTd);
         tr.appendChild(intentsTd);
-        tr.appendChild(saveTd);
         tbody.appendChild(tr);
     });
 }
 
-async function saveImportIntents(importId) {
-    const projectId = getProjectId();
-    const row = document.querySelector(`tr[data-import-id="${importId}"]`);
-    if (!row) return;
-
-    const selected = Array.from(row.querySelectorAll('input[type="checkbox"][data-intent]:checked'))
+function getSelectedIntentsForRow(row) {
+    return Array.from(row.querySelectorAll('input[type="checkbox"][data-intent]:checked'))
         .map(checkbox => ({
             intent: checkbox.dataset.intent,
             source: 'manual',
             confidence: 1
         }));
+}
+
+async function saveImportIntentsForRow(projectId, row, importId) {
+    const selected = getSelectedIntentsForRow(row);
+    await api(`/projects/${projectId}/imports/${importId}/intents`, {
+        method: 'PUT',
+        body: JSON.stringify({ intents: selected })
+    });
+}
+
+async function saveAllImportIntents() {
+    const projectId = getProjectId();
+    if (!projectId) return;
+
+    const rows = Array.from(document.querySelectorAll('#import-intents-body tr[data-import-id]'));
+    if (rows.length === 0) {
+        showToast('No imports to save.', 'error');
+        return;
+    }
+
+    const saveAllImportIntentsBtn = document.getElementById('save-all-import-intents-btn');
+    const originalLabel = saveAllImportIntentsBtn ? saveAllImportIntentsBtn.textContent : '';
+    if (saveAllImportIntentsBtn) {
+        saveAllImportIntentsBtn.disabled = true;
+        saveAllImportIntentsBtn.textContent = 'Saving...';
+    }
 
     try {
-        await api(`/projects/${projectId}/imports/${importId}/intents`, {
-            method: 'PUT',
-            body: JSON.stringify({ intents: selected })
-        });
-        showToast(`Saved intents for import #${importId}`, 'success');
-        await loadImportIntents();
-    } catch (err) {
-        showToast(`Failed to save intents: ${err.message}`, 'error');
+        const results = [];
+        for (const row of rows) {
+            const importId = Number(row.dataset.importId);
+            if (!Number.isInteger(importId)) {
+                results.push({ ok: false, importId: row.dataset.importId || '?' });
+                continue;
+            }
+            try {
+                await saveImportIntentsForRow(projectId, row, importId);
+                results.push({ ok: true, importId });
+            } catch (_) {
+                results.push({ ok: false, importId });
+            }
+        }
+
+        const successCount = results.filter(item => item.ok).length;
+        const failed = results.filter(item => !item.ok);
+
+        if (successCount > 0) {
+            showToast(`Saved intents for ${successCount} import${successCount === 1 ? '' : 's'}`, 'success');
+            await loadImportIntents();
+        }
+        if (failed.length > 0) {
+            const failedSummary = failed
+                .slice(0, 5)
+                .map(item => `#${item.importId}`)
+                .join(', ');
+            const suffix = failed.length > 5 ? ` (+${failed.length - 5} more)` : '';
+            showToast(`Failed to save intents for ${failedSummary}${suffix}`, 'error');
+        }
+    } finally {
+        if (saveAllImportIntentsBtn) {
+            saveAllImportIntentsBtn.disabled = false;
+            saveAllImportIntentsBtn.textContent = originalLabel || 'Save All';
+        }
     }
 }
 
@@ -927,12 +1005,13 @@ async function saveProjectName() {
     }
 }
 
-function toggleExportMenu() {
-    const menu = document.getElementById('export-menu');
+function toggleProjectToolsMenu() {
+    const menu = document.getElementById('project-tools-menu');
+    if (!menu) return;
     menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
 }
 
-window.toggleExportMenu = toggleExportMenu;
+window.toggleProjectToolsMenu = toggleProjectToolsMenu;
 window.toggleEditName = toggleEditName;
 window.saveProjectName = saveProjectName;
 window.cancelRename = cancelRename;

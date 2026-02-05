@@ -37,17 +37,22 @@
                 <span onclick="cancelRename()" style="cursor: pointer; font-size: 1.2rem;" title="Cancel">❌</span>
             </div>
 
-            <div class="flex-row" style="margin-top: 16px;">
+            <div class="flex-row project-page-actions">
                 <a id="view-hosts-btn" class="btn btn-primary" href="#">View Hosts</a>
-                <a id="view-all-scans-btn" class="btn btn-primary" href="#" style="margin-left: 10px;">View All
-                    Scans</a>
-                <a id="view-coverage-matrix-btn" class="btn btn-secondary" href="#" style="margin-left: 10px;">Coverage Matrix</a>
-                <a id="view-import-delta-btn" class="btn btn-secondary" href="#" style="margin-left: 10px;">Import Delta</a>
-                <a id="view-service-queues-btn" class="btn btn-secondary" href="#" style="margin-left: 10px;">Service Queues</a>
-                <div class="dropdown" style="margin-left: auto; position: relative;">
-                    <button class="btn btn-secondary dropdown-toggle" onclick="toggleExportMenu()">Export ▼</button>
-                    <div id="export-menu" class="dropdown-menu" style="display: none;">
-                        <!-- Links populated by JS -->
+                <a id="view-all-scans-btn" class="btn btn-primary" href="#">View All Scans</a>
+                <button id="toggle-all-sections-btn" type="button" class="btn btn-secondary">Collapse All</button>
+                <div class="dropdown project-tools-dropdown">
+                    <button type="button" class="btn btn-secondary dropdown-toggle" onclick="toggleProjectToolsMenu()">Project Tools ☰</button>
+                    <div id="project-tools-menu" class="dropdown-menu dropdown-menu-wide" style="display: none;">
+                        <div class="dropdown-section-label">Views</div>
+                        <a id="view-coverage-matrix-btn" href="#" class="dropdown-item">Coverage Matrix</a>
+                        <a id="view-import-delta-btn" href="#" class="dropdown-item">Import Delta</a>
+                        <a id="view-service-queues-btn" href="#" class="dropdown-item">Service Queues</a>
+                        <div class="dropdown-divider"></div>
+                        <div class="dropdown-section-label">Export</div>
+                        <a id="export-json-btn" href="#" target="_blank" class="dropdown-item">Export JSON</a>
+                        <a id="export-csv-btn" href="#" target="_blank" class="dropdown-item">Export CSV</a>
+                        <a id="export-text-btn" href="#" target="_blank" class="dropdown-item">Export TXT</a>
                     </div>
                 </div>
             </div>
@@ -126,6 +131,7 @@
                 <div class="card-header section-header">
                     <h3 class="card-title">Import Intents</h3>
                     <div class="section-header-actions">
+                        <button id="save-all-import-intents-btn" class="btn btn-primary">Save All</button>
                         <button id="refresh-import-intents-btn" class="btn btn-secondary">Refresh</button>
                         <span class="section-drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</span>
                         <button type="button" class="section-collapse-toggle" data-section-toggle aria-label="Collapse section">▼</button>
@@ -133,7 +139,7 @@
                 </div>
                 <div class="section-content" data-section-content>
                     <p class="text-muted" style="margin-top: 0;">
-                        Milestone queues are driven by import intents. Set intents on each import to mark scan coverage.
+                        In plain English: these tags tell queue views what each import actually scanned, so queue/milestone coverage stays accurate.
                     </p>
                     <div class="table-container">
                         <table>
@@ -143,12 +149,11 @@
                                     <th style="width: 210px;">Time</th>
                                     <th>Filename</th>
                                     <th style="min-width: 360px;">Intents</th>
-                                    <th style="width: 90px;">Save</th>
                                 </tr>
                             </thead>
                             <tbody id="import-intents-body">
                                 <tr>
-                                    <td colspan="5" class="text-muted" style="text-align: center;">Loading imports...</td>
+                                    <td colspan="4" class="text-muted" style="text-align: center;">Loading imports...</td>
                                 </tr>
                             </tbody>
                         </table>

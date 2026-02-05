@@ -459,6 +459,20 @@ label {
     align-items: center;
 }
 
+.project-page-actions {
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.project-tools-dropdown {
+    margin-left: auto;
+    position: relative;
+}
+
+.project-page-actions .dropdown-toggle {
+    white-space: nowrap;
+}
+
 .flex-between {
     display: flex;
     justify-content: space-between;
@@ -894,6 +908,26 @@ label {
     /* Toggled via JS styling inline usually, but class helps defaults */
 }
 
+.dropdown-menu-wide {
+    min-width: 220px;
+}
+
+.dropdown-section-label {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    margin: 4px 8px;
+    text-transform: uppercase;
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 8px 4px;
+}
+
 
 
 
@@ -1060,4 +1094,20 @@ table .delete-btn:hover {
 
 .baseline-list-pagination .pagination-btn {
     margin: 0;
+}
+
+@media (max-width: 980px) {
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .project-page-actions {
+        width: 100%;
+    }
+
+    .project-tools-dropdown {
+        margin-left: 0;
+    }
 }
