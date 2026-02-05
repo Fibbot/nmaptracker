@@ -1120,6 +1120,13 @@ func TestServiceQueueEndpointValidation(t *testing.T) {
 		t.Fatalf("expected 400 for unknown campaign, got %d", rec.Code)
 	}
 
+	req = httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/services?campaign=smb,nope", nil)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for mixed valid/invalid campaign list, got %d", rec.Code)
+	}
+
 	req = httptest.NewRequest(http.MethodGet, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/services?campaign=smb&page=0", nil)
 	rec = httptest.NewRecorder()
 	server.Handler().ServeHTTP(rec, req)
@@ -1211,11 +1218,12 @@ func TestServiceQueueEndpointResponseAndPagination(t *testing.T) {
 	}
 
 	var resp struct {
-		Campaign        string  `json:"campaign"`
-		TotalHosts      int     `json:"total_hosts"`
-		Page            int     `json:"page"`
-		PageSize        int     `json:"page_size"`
-		SourceImportIDs []int64 `json:"source_import_ids"`
+		Campaign        string   `json:"campaign"`
+		Campaigns       []string `json:"campaigns"`
+		TotalHosts      int      `json:"total_hosts"`
+		Page            int      `json:"page"`
+		PageSize        int      `json:"page_size"`
+		SourceImportIDs []int64  `json:"source_import_ids"`
 		Items           []struct {
 			HostID        int64  `json:"host_id"`
 			IPAddress     string `json:"ip_address"`
@@ -1242,6 +1250,9 @@ func TestServiceQueueEndpointResponseAndPagination(t *testing.T) {
 	}
 	if resp.Campaign != "smb" || resp.TotalHosts != 3 || resp.Page != 1 || resp.PageSize != 2 {
 		t.Fatalf("unexpected envelope: %+v", resp)
+	}
+	if len(resp.Campaigns) != 1 || resp.Campaigns[0] != "smb" {
+		t.Fatalf("unexpected campaign list: %+v", resp.Campaigns)
 	}
 	if len(resp.Items) != 2 || resp.Items[0].IPAddress != h1.IPAddress || resp.Items[1].IPAddress != h2.IPAddress {
 		t.Fatalf("unexpected first page items: %+v", resp.Items)
@@ -1280,6 +1291,57 @@ func TestServiceQueueEndpointResponseAndPagination(t *testing.T) {
 	}
 	if len(resp.SourceImportIDs) != 1 || resp.SourceImportIDs[0] != import2 {
 		t.Fatalf("unexpected second page source_import_ids: %+v", resp.SourceImportIDs)
+	}
+
+	if _, err := database.UpsertPort(db.Port{
+		HostID:     h1.ID,
+		PortNumber: 22,
+		Protocol:   "tcp",
+		State:      "open",
+		Service:    "ssh",
+		WorkStatus: "flagged",
+	}); err != nil {
+		t.Fatalf("insert h1 ssh port: %v", err)
+	}
+
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/services?campaign=ssh,http&page=1&page_size=10",
+		nil,
+	)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for csv campaigns, got %d", rec.Code)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal csv campaign response: %v", err)
+	}
+	if resp.Campaign != "http,ssh" {
+		t.Fatalf("expected normalized campaign string, got %q", resp.Campaign)
+	}
+	if len(resp.Campaigns) != 2 || resp.Campaigns[0] != "http" || resp.Campaigns[1] != "ssh" {
+		t.Fatalf("unexpected normalized campaign list for csv: %+v", resp.Campaigns)
+	}
+
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/queues/services?campaign=ssh&campaign=http&page=1&page_size=10",
+		nil,
+	)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for repeated campaigns, got %d", rec.Code)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal repeated campaign response: %v", err)
+	}
+	if resp.Campaign != "http,ssh" {
+		t.Fatalf("expected normalized repeated campaign string, got %q", resp.Campaign)
+	}
+	if len(resp.Campaigns) != 2 || resp.Campaigns[0] != "http" || resp.Campaigns[1] != "ssh" {
+		t.Fatalf("unexpected normalized campaign list for repeated params: %+v", resp.Campaigns)
 	}
 }
 

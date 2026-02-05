@@ -359,6 +359,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('queue-ldap-btn').href = `service_queues.html?id=${projectId}&campaign=ldap`;
         document.getElementById('queue-rdp-btn').href = `service_queues.html?id=${projectId}&campaign=rdp`;
         document.getElementById('queue-http-btn').href = `service_queues.html?id=${projectId}&campaign=http`;
+        document.getElementById('queue-ssh-btn').href = `service_queues.html?id=${projectId}&campaign=ssh`;
 
         document.getElementById('link-wf-scanned').href = `scan_results.html?id=${projectId}&status=scanned`;
         document.getElementById('link-wf-flagged').href = `scan_results.html?id=${projectId}&status=flagged`;

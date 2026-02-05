@@ -3,6 +3,7 @@ package db
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -12,6 +13,7 @@ const (
 	ServiceCampaignLDAP = "ldap"
 	ServiceCampaignRDP  = "rdp"
 	ServiceCampaignHTTP = "http"
+	ServiceCampaignSSH  = "ssh"
 )
 
 var ErrInvalidServiceCampaign = errors.New("invalid service campaign")
@@ -45,10 +47,16 @@ var serviceCampaignDefinitions = map[string]serviceCampaignDefinition{
 	},
 	ServiceCampaignHTTP: {
 		predicate: `(
-			((p.port_number = 80 OR p.port_number = 81 OR p.port_number = 443 OR p.port_number = 8000 OR p.port_number = 8080 OR p.port_number = 8081 OR p.port_number = 8443 OR p.port_number = 8888) AND lower(p.protocol) = 'tcp')
+			((p.port_number = 80 OR p.port_number = 443 OR p.port_number = 8000 OR p.port_number = 8080 OR p.port_number = 8443 OR p.port_number = 9443) AND lower(p.protocol) = 'tcp')
 			OR lower(COALESCE(p.service, '')) LIKE '%http%'
 			OR lower(COALESCE(p.service, '')) LIKE '%https%'
 			OR lower(COALESCE(p.service, '')) LIKE '%http-proxy%'
+		)`,
+	},
+	ServiceCampaignSSH: {
+		predicate: `(
+			(p.port_number = 22 AND lower(p.protocol) = 'tcp')
+			OR lower(COALESCE(p.service, '')) LIKE '%ssh%'
 		)`,
 	},
 }
@@ -84,12 +92,53 @@ type ServiceCampaignHost struct {
 	LatestSeen    time.Time                    `json:"latest_seen"`
 }
 
+// NormalizeServiceCampaigns validates campaign filters and returns deterministic ordering.
+func NormalizeServiceCampaigns(campaigns []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(campaigns))
+	out := make([]string, 0, len(campaigns))
+	for _, campaign := range campaigns {
+		for _, token := range strings.Split(campaign, ",") {
+			normalized := strings.ToLower(strings.TrimSpace(token))
+			if normalized == "" {
+				continue
+			}
+			if _, ok := serviceCampaignDefinitions[normalized]; !ok {
+				return nil, fmt.Errorf("%w: %q", ErrInvalidServiceCampaign, normalized)
+			}
+			if _, exists := seen[normalized]; exists {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			out = append(out, normalized)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func buildServiceCampaignPredicate(campaigns []string) (string, []string, error) {
+	normalized, err := NormalizeServiceCampaigns(campaigns)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(normalized) == 0 {
+		return "", nil, fmt.Errorf("%w: empty", ErrInvalidServiceCampaign)
+	}
+
+	predicates := make([]string, 0, len(normalized))
+	for _, campaign := range normalized {
+		definition := serviceCampaignDefinitions[campaign]
+		predicates = append(predicates, definition.predicate)
+	}
+
+	return "(" + strings.Join(predicates, " OR ") + ")", normalized, nil
+}
+
 // ListServiceCampaignQueue returns grouped campaign queue hosts with pagination and audit import IDs.
-func (db *DB) ListServiceCampaignQueue(projectID int64, campaign string, limit, offset int) ([]ServiceCampaignHost, int, []int64, error) {
-	campaign = strings.ToLower(strings.TrimSpace(campaign))
-	definition, ok := serviceCampaignDefinitions[campaign]
-	if !ok {
-		return nil, 0, nil, fmt.Errorf("%w: %q", ErrInvalidServiceCampaign, campaign)
+func (db *DB) ListServiceCampaignQueue(projectID int64, campaigns []string, limit, offset int) ([]ServiceCampaignHost, int, []int64, error) {
+	combinedPredicate, _, err := buildServiceCampaignPredicate(campaigns)
+	if err != nil {
+		return nil, 0, nil, err
 	}
 
 	if limit <= 0 {
@@ -106,7 +155,7 @@ func (db *DB) ListServiceCampaignQueue(projectID int64, campaign string, limit, 
 		   AND h.in_scope = 1
 		   AND p.state IN ('open', 'open|filtered')
 		   AND %s`,
-		definition.predicate,
+		combinedPredicate,
 	)
 
 	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM (SELECT h.id %s GROUP BY h.id)`, baseWhere)
@@ -172,7 +221,7 @@ func (db *DB) ListServiceCampaignQueue(projectID int64, campaign string, limit, 
 		    AND %s
 		  ORDER BY CASE WHEN h.ip_int IS NULL THEN 1 ELSE 0 END, h.ip_int, h.ip_address, p.port_number, p.protocol`,
 		makePlaceholders(len(hostIDs)),
-		definition.predicate,
+		combinedPredicate,
 	)
 	portRows, err := db.Query(portQuery, portArgs...)
 	if err != nil {

@@ -19,8 +19,21 @@ func (s *Server) apiListServiceQueue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := r.URL.Query()
-	campaign := strings.ToLower(strings.TrimSpace(query.Get("campaign")))
-	if campaign == "" {
+	rawCampaigns := query["campaign"]
+	if len(rawCampaigns) == 0 {
+		s.badRequest(w, fmt.Errorf("campaign is required"))
+		return
+	}
+	campaigns, err := db.NormalizeServiceCampaigns(rawCampaigns)
+	if err != nil {
+		if errors.Is(err, db.ErrInvalidServiceCampaign) {
+			s.badRequest(w, fmt.Errorf("invalid campaign filter"))
+			return
+		}
+		s.badRequest(w, err)
+		return
+	}
+	if len(campaigns) == 0 {
 		s.badRequest(w, fmt.Errorf("campaign is required"))
 		return
 	}
@@ -49,10 +62,10 @@ func (s *Server) apiListServiceQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	offset := (page - 1) * pageSize
 
-	items, total, sourceImportIDs, err := s.DB.ListServiceCampaignQueue(projectID, campaign, pageSize, offset)
+	items, total, sourceImportIDs, err := s.DB.ListServiceCampaignQueue(projectID, campaigns, pageSize, offset)
 	if err != nil {
 		if errors.Is(err, db.ErrInvalidServiceCampaign) {
-			s.badRequest(w, fmt.Errorf("invalid campaign %q", campaign))
+			s.badRequest(w, fmt.Errorf("invalid campaign filter"))
 			return
 		}
 		s.serverError(w, err)
@@ -92,6 +105,7 @@ func (s *Server) apiListServiceQueue(w http.ResponseWriter, r *http.Request) {
 		GeneratedAt     string                 `json:"generated_at"`
 		ProjectID       int64                  `json:"project_id"`
 		Campaign        string                 `json:"campaign"`
+		Campaigns       []string               `json:"campaigns"`
 		FiltersApplied  filtersAppliedResponse `json:"filters_applied"`
 		TotalHosts      int                    `json:"total_hosts"`
 		Page            int                    `json:"page"`
@@ -101,7 +115,8 @@ func (s *Server) apiListServiceQueue(w http.ResponseWriter, r *http.Request) {
 	}{
 		GeneratedAt: time.Now().UTC().Truncate(time.Second).Format("2006-01-02T15:04:05Z"),
 		ProjectID:   projectID,
-		Campaign:    campaign,
+		Campaign:    strings.Join(campaigns, ","),
+		Campaigns:   campaigns,
 		FiltersApplied: filtersAppliedResponse{
 			States: []string{"open", "open|filtered"},
 		},

@@ -30,6 +30,12 @@ func TestServiceCampaignQueueCampaignMatching(t *testing.T) {
 		{ip: "10.0.0.15", inScope: true, port: 3390, protocol: "tcp", state: "open", service: "ms-wbt-server"},
 		{ip: "10.0.0.16", inScope: true, port: 8080, protocol: "tcp", state: "open", service: ""},
 		{ip: "10.0.0.17", inScope: true, port: 9001, protocol: "tcp", state: "open", service: "http-proxy"},
+		{ip: "10.0.0.20", inScope: true, port: 9443, protocol: "tcp", state: "open", service: ""},
+		{ip: "10.0.0.21", inScope: true, port: 81, protocol: "tcp", state: "open", service: ""},
+		{ip: "10.0.0.22", inScope: true, port: 8081, protocol: "tcp", state: "open", service: ""},
+		{ip: "10.0.0.23", inScope: true, port: 8888, protocol: "tcp", state: "open", service: ""},
+		{ip: "10.0.0.24", inScope: true, port: 22, protocol: "tcp", state: "open", service: ""},
+		{ip: "10.0.0.25", inScope: true, port: 2022, protocol: "tcp", state: "open", service: "openssh"},
 		{ip: "10.0.0.18", inScope: false, port: 445, protocol: "tcp", state: "open", service: "microsoft-ds"},
 		{ip: "10.0.0.19", inScope: true, port: 80, protocol: "tcp", state: "closed", service: "http"},
 	}
@@ -52,37 +58,39 @@ func TestServiceCampaignQueueCampaignMatching(t *testing.T) {
 	}
 
 	cases := []struct {
-		campaign string
-		wantIPs  []string
+		campaigns []string
+		wantIPs   []string
 	}{
-		{campaign: ServiceCampaignSMB, wantIPs: []string{"10.0.0.10", "10.0.0.11"}},
-		{campaign: ServiceCampaignLDAP, wantIPs: []string{"10.0.0.12", "10.0.0.13"}},
-		{campaign: ServiceCampaignRDP, wantIPs: []string{"10.0.0.14", "10.0.0.15"}},
-		{campaign: ServiceCampaignHTTP, wantIPs: []string{"10.0.0.16", "10.0.0.17"}},
+		{campaigns: []string{ServiceCampaignSMB}, wantIPs: []string{"10.0.0.10", "10.0.0.11"}},
+		{campaigns: []string{ServiceCampaignLDAP}, wantIPs: []string{"10.0.0.12", "10.0.0.13"}},
+		{campaigns: []string{ServiceCampaignRDP}, wantIPs: []string{"10.0.0.14", "10.0.0.15"}},
+		{campaigns: []string{ServiceCampaignHTTP}, wantIPs: []string{"10.0.0.16", "10.0.0.17", "10.0.0.20"}},
+		{campaigns: []string{ServiceCampaignSSH}, wantIPs: []string{"10.0.0.24", "10.0.0.25"}},
+		{campaigns: []string{"ssh,http"}, wantIPs: []string{"10.0.0.16", "10.0.0.17", "10.0.0.20", "10.0.0.24", "10.0.0.25"}},
 	}
 
 	for _, tc := range cases {
-		items, total, sourceIDs, err := db.ListServiceCampaignQueue(project.ID, tc.campaign, 100, 0)
+		items, total, sourceIDs, err := db.ListServiceCampaignQueue(project.ID, tc.campaigns, 100, 0)
 		if err != nil {
-			t.Fatalf("list service queue %s: %v", tc.campaign, err)
+			t.Fatalf("list service queue %+v: %v", tc.campaigns, err)
 		}
 		if total != len(tc.wantIPs) {
-			t.Fatalf("%s: expected total %d, got %d", tc.campaign, len(tc.wantIPs), total)
+			t.Fatalf("%+v: expected total %d, got %d", tc.campaigns, len(tc.wantIPs), total)
 		}
 		if len(items) != len(tc.wantIPs) {
-			t.Fatalf("%s: expected %d items, got %d", tc.campaign, len(tc.wantIPs), len(items))
+			t.Fatalf("%+v: expected %d items, got %d", tc.campaigns, len(tc.wantIPs), len(items))
 		}
 		if len(sourceIDs) != 0 {
-			t.Fatalf("%s: expected no source_import_ids without observations, got %+v", tc.campaign, sourceIDs)
+			t.Fatalf("%+v: expected no source_import_ids without observations, got %+v", tc.campaigns, sourceIDs)
 		}
 		for i, item := range items {
 			if item.IPAddress != tc.wantIPs[i] {
-				t.Fatalf("%s: expected item[%d].ip=%s, got %s", tc.campaign, i, tc.wantIPs[i], item.IPAddress)
+				t.Fatalf("%+v: expected item[%d].ip=%s, got %s", tc.campaigns, i, tc.wantIPs[i], item.IPAddress)
 			}
 		}
 	}
 
-	if _, _, _, err := db.ListServiceCampaignQueue(project.ID, "not_real", 10, 0); err == nil {
+	if _, _, _, err := db.ListServiceCampaignQueue(project.ID, []string{"not_real"}, 10, 0); err == nil {
 		t.Fatalf("expected invalid campaign error")
 	}
 }
@@ -163,7 +171,7 @@ func TestServiceCampaignQueueGroupingStatusSummaryPaginationAndAudit(t *testing.
 		t.Fatalf("insert importC: %v", err)
 	}
 
-	firstPage, total, sourceIDs, err := db.ListServiceCampaignQueue(project.ID, ServiceCampaignSMB, 2, 0)
+	firstPage, total, sourceIDs, err := db.ListServiceCampaignQueue(project.ID, []string{ServiceCampaignSMB}, 2, 0)
 	if err != nil {
 		t.Fatalf("list first page queue: %v", err)
 	}
@@ -192,7 +200,7 @@ func TestServiceCampaignQueueGroupingStatusSummaryPaginationAndAudit(t *testing.
 		t.Fatalf("unexpected first page source_import_ids: %+v", sourceIDs)
 	}
 
-	secondPage, _, sourceIDsPage2, err := db.ListServiceCampaignQueue(project.ID, ServiceCampaignSMB, 2, 2)
+	secondPage, _, sourceIDsPage2, err := db.ListServiceCampaignQueue(project.ID, []string{ServiceCampaignSMB}, 2, 2)
 	if err != nil {
 		t.Fatalf("list second page queue: %v", err)
 	}

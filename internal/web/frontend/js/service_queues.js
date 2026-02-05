@@ -1,10 +1,22 @@
+const CAMPAIGN_ORDER = ['http', 'ldap', 'rdp', 'smb', 'ssh'];
+const CAMPAIGN_LABELS = {
+    smb: 'SMB',
+    ldap: 'LDAP',
+    rdp: 'RDP',
+    http: 'HTTP(S)',
+    ssh: 'SSH'
+};
+
 const serviceQueueState = {
     projectId: null,
-    campaign: 'smb',
+    projectName: '',
+    campaigns: new Set(['smb']),
     page: 1,
     pageSize: 50,
     totalHosts: 0,
-    expandedHosts: {}
+    expandedHosts: {},
+    selectedHosts: {},
+    currentPageHosts: []
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -15,13 +27,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     serviceQueueState.projectId = projectId;
-    const requestedCampaign = String(getParam('campaign') || '').toLowerCase();
-    if (['smb', 'ldap', 'rdp', 'http'].includes(requestedCampaign)) {
-        serviceQueueState.campaign = requestedCampaign;
+
+    const requestedCampaigns = parseCampaignsFromURL();
+    if (requestedCampaigns.length > 0) {
+        serviceQueueState.campaigns = new Set(requestedCampaigns);
     }
 
     try {
         const project = await api(`/projects/${projectId}`);
+        serviceQueueState.projectName = project.Name || '';
         document.title = `NmapTracker - Service Queues - ${project.Name}`;
         document.getElementById('nav-project-name').textContent = project.Name;
         document.getElementById('nav-project-name').href = `project.html?id=${projectId}`;
@@ -34,19 +48,76 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
+function parseCampaignsFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const tokens = [];
+    params.getAll('campaign').forEach(raw => {
+        String(raw || '').split(',').forEach(token => {
+            tokens.push(token);
+        });
+    });
+    return normalizeCampaignTokens(tokens);
+}
+
+function normalizeCampaignTokens(values) {
+    const seen = new Set();
+    const out = [];
+    values.forEach(value => {
+        const normalized = String(value || '').toLowerCase().trim();
+        if (!normalized || !CAMPAIGN_LABELS[normalized] || seen.has(normalized)) {
+            return;
+        }
+        seen.add(normalized);
+        out.push(normalized);
+    });
+    out.sort((a, b) => CAMPAIGN_ORDER.indexOf(a) - CAMPAIGN_ORDER.indexOf(b));
+    return out;
+}
+
+function getSelectedCampaigns() {
+    const values = Array.from(serviceQueueState.campaigns);
+    values.sort((a, b) => CAMPAIGN_ORDER.indexOf(a) - CAMPAIGN_ORDER.indexOf(b));
+    return values;
+}
+
+function getCampaignTokenForFilename() {
+    const values = Array.from(serviceQueueState.campaigns);
+    values.sort();
+    return values.join('-');
+}
+
+function sanitizeFilenamePart(value, fallback) {
+    const cleaned = String(value || '')
+        .trim()
+        .replace(/[^A-Za-z0-9._-]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return cleaned || fallback;
+}
+
 function bindServiceQueueEvents() {
     document.getElementById('refresh-service-btn').addEventListener('click', loadServiceQueue);
 
     document.querySelectorAll('.queue-campaign-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
-            const campaign = btn.dataset.campaign;
-            if (!campaign || serviceQueueState.campaign === campaign) {
+            const campaign = String(btn.dataset.campaign || '').toLowerCase().trim();
+            if (!campaign || !CAMPAIGN_LABELS[campaign]) {
                 return;
             }
-            serviceQueueState.campaign = campaign;
+
+            if (serviceQueueState.campaigns.has(campaign)) {
+                if (serviceQueueState.campaigns.size === 1) {
+                    showToast('At least one campaign filter is required.', 'info');
+                    return;
+                }
+                serviceQueueState.campaigns.delete(campaign);
+            } else {
+                serviceQueueState.campaigns.add(campaign);
+            }
+
             serviceQueueState.page = 1;
             serviceQueueState.expandedHosts = {};
-            setActiveCampaignButton();
+            setActiveCampaignButtons();
+            updateCampaignQueryParams();
             await loadServiceQueue();
         });
     });
@@ -62,11 +133,75 @@ function bindServiceQueueEvents() {
         serviceQueueState.page += 1;
         await loadServiceQueue();
     });
+
+    document.getElementById('service-select-all-visible').addEventListener('change', (event) => {
+        const checked = !!event.target.checked;
+        serviceQueueState.currentPageHosts.forEach(item => {
+            if (checked) {
+                serviceQueueState.selectedHosts[item.host_id] = item.ip_address;
+            } else {
+                delete serviceQueueState.selectedHosts[item.host_id];
+            }
+        });
+        syncSelectionUI();
+        renderServiceQueueRows(serviceQueueState.currentPageHosts);
+    });
+
+    document.getElementById('copy-selected-ips-btn').addEventListener('click', async () => {
+        const ips = getSelectedIPs();
+        if (!ips.length) {
+            showToast('No hosts selected.', 'info');
+            return;
+        }
+        const text = ips.join('\n');
+        try {
+            await navigator.clipboard.writeText(text);
+            showToast(`Copied ${ips.length} IPs to clipboard.`, 'success');
+        } catch (err) {
+            showToast('Clipboard copy failed.', 'error');
+        }
+    });
+
+    document.getElementById('export-selected-ips-btn').addEventListener('click', () => {
+        const ips = getSelectedIPs();
+        if (!ips.length) {
+            showToast('No hosts selected.', 'info');
+            return;
+        }
+
+        const projectToken = sanitizeFilenamePart(serviceQueueState.projectName, `project-${serviceQueueState.projectId}`);
+        const filterToken = sanitizeFilenamePart(getCampaignTokenForFilename(), 'hosts');
+        const filename = `${projectToken}_${filterToken}-hosts.txt`;
+
+        const blob = new Blob([`${ips.join('\n')}\n`], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    });
 }
 
-function setActiveCampaignButton() {
+function getSelectedIPs() {
+    return Object.values(serviceQueueState.selectedHosts)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+function updateCampaignQueryParams() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('campaign');
+    getSelectedCampaigns().forEach(campaign => url.searchParams.append('campaign', campaign));
+    window.history.replaceState({}, '', url);
+}
+
+function setActiveCampaignButtons() {
     document.querySelectorAll('.queue-campaign-btn').forEach(btn => {
-        if (btn.dataset.campaign === serviceQueueState.campaign) {
+        const campaign = String(btn.dataset.campaign || '').toLowerCase().trim();
+        if (serviceQueueState.campaigns.has(campaign)) {
             btn.classList.remove('btn-secondary');
             btn.classList.add('btn-primary');
         } else {
@@ -78,10 +213,10 @@ function setActiveCampaignButton() {
 
 async function loadServiceQueue() {
     hideError();
-    setActiveCampaignButton();
+    setActiveCampaignButtons();
 
     const params = new URLSearchParams();
-    params.set('campaign', serviceQueueState.campaign);
+    getSelectedCampaigns().forEach(campaign => params.append('campaign', campaign));
     params.set('page', String(serviceQueueState.page));
     params.set('page_size', String(serviceQueueState.pageSize));
 
@@ -96,9 +231,13 @@ async function loadServiceQueue() {
 function renderServiceQueue(result) {
     const items = (result && result.items) || [];
     serviceQueueState.totalHosts = (result && result.total_hosts) || 0;
+    serviceQueueState.currentPageHosts = items;
 
     const meta = document.getElementById('queue-meta');
-    meta.textContent = `Campaign: ${(result && result.campaign) || serviceQueueState.campaign} | Total Hosts: ${serviceQueueState.totalHosts} | Generated: ${(result && result.generated_at) || '-'}`;
+    const campaignLabels = (((result && result.campaigns) || getSelectedCampaigns())
+        .map(campaign => CAMPAIGN_LABELS[campaign] || campaign.toUpperCase())
+        .join(', '));
+    meta.textContent = `Campaigns: ${campaignLabels || '-'} | Total Hosts: ${serviceQueueState.totalHosts} | Generated: ${(result && result.generated_at) || '-'}`;
 
     const sourceImports = document.getElementById('service-source-imports');
     const sourceIDs = (result && result.source_import_ids) || [];
@@ -106,75 +245,115 @@ function renderServiceQueue(result) {
         ? `Source import IDs on this page: ${sourceIDs.join(', ')}`
         : 'Source import IDs on this page: none';
 
+    renderServiceQueueRows(items);
+
+    const totalPages = Math.max(1, Math.ceil(serviceQueueState.totalHosts / serviceQueueState.pageSize));
+    document.getElementById('service-page-info').textContent = `Page ${serviceQueueState.page} of ${totalPages}`;
+    document.getElementById('service-prev-btn').disabled = serviceQueueState.page <= 1;
+    document.getElementById('service-next-btn').disabled = serviceQueueState.page >= totalPages;
+
+    syncSelectionUI();
+}
+
+function renderServiceQueueRows(items) {
     const tbody = document.getElementById('service-queue-rows');
     tbody.innerHTML = '';
 
     if (!items.length) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 5;
+        td.colSpan = 6;
         td.style.textAlign = 'center';
-        td.textContent = 'No hosts match this campaign on the current page.';
+        td.textContent = 'No hosts match the selected campaigns on the current page.';
         tr.appendChild(td);
         tbody.appendChild(tr);
-    } else {
-        items.forEach(item => {
-            const expanded = !!serviceQueueState.expandedHosts[item.host_id];
-
-            const tr = document.createElement('tr');
-
-            const expandTd = document.createElement('td');
-            const expandBtn = document.createElement('button');
-            expandBtn.className = 'btn btn-secondary';
-            expandBtn.style.padding = '4px 8px';
-            expandBtn.style.fontSize = '12px';
-            expandBtn.textContent = expanded ? '▼' : '▶';
-            expandBtn.addEventListener('click', () => {
-                serviceQueueState.expandedHosts[item.host_id] = !serviceQueueState.expandedHosts[item.host_id];
-                renderServiceQueue(result);
-            });
-            expandTd.appendChild(expandBtn);
-
-            const hostTd = document.createElement('td');
-            hostTd.innerHTML = `<strong>${escapeHtml(item.ip_address)}</strong><br><span class="text-muted">${escapeHtml(item.hostname || '-')}</span>`;
-
-            const summaryTd = document.createElement('td');
-            summaryTd.innerHTML = renderStatusSummaryBadges(item.status_summary || {});
-
-            const latestTd = document.createElement('td');
-            latestTd.textContent = item.latest_seen ? new Date(item.latest_seen).toLocaleString() : '-';
-
-            const linkTd = document.createElement('td');
-            const link = document.createElement('a');
-            link.className = 'btn btn-secondary';
-            link.style.padding = '4px 8px';
-            link.style.fontSize = '12px';
-            link.href = `host.html?id=${serviceQueueState.projectId}&hostId=${item.host_id}`;
-            link.textContent = 'View';
-            linkTd.appendChild(link);
-
-            tr.appendChild(expandTd);
-            tr.appendChild(hostTd);
-            tr.appendChild(summaryTd);
-            tr.appendChild(latestTd);
-            tr.appendChild(linkTd);
-            tbody.appendChild(tr);
-
-            if (expanded) {
-                const detailTr = document.createElement('tr');
-                const detailTd = document.createElement('td');
-                detailTd.colSpan = 5;
-                detailTd.innerHTML = renderMatchingPortsTable(item.matching_ports || []);
-                detailTr.appendChild(detailTd);
-                tbody.appendChild(detailTr);
-            }
-        });
+        return;
     }
 
-    const totalPages = Math.max(1, Math.ceil(serviceQueueState.totalHosts / serviceQueueState.pageSize));
-    document.getElementById('service-page-info').textContent = `Page ${serviceQueueState.page} of ${totalPages}`;
-    document.getElementById('service-prev-btn').disabled = serviceQueueState.page <= 1;
-    document.getElementById('service-next-btn').disabled = serviceQueueState.page >= totalPages;
+    items.forEach(item => {
+        const expanded = !!serviceQueueState.expandedHosts[item.host_id];
+        const selected = !!serviceQueueState.selectedHosts[item.host_id];
+
+        const tr = document.createElement('tr');
+
+        const selectTd = document.createElement('td');
+        const select = document.createElement('input');
+        select.type = 'checkbox';
+        select.checked = selected;
+        select.addEventListener('change', () => {
+            if (select.checked) {
+                serviceQueueState.selectedHosts[item.host_id] = item.ip_address;
+            } else {
+                delete serviceQueueState.selectedHosts[item.host_id];
+            }
+            syncSelectionUI();
+        });
+        selectTd.appendChild(select);
+
+        const expandTd = document.createElement('td');
+        const expandBtn = document.createElement('button');
+        expandBtn.className = 'btn btn-secondary';
+        expandBtn.style.padding = '4px 8px';
+        expandBtn.style.fontSize = '12px';
+        expandBtn.textContent = expanded ? '▼' : '▶';
+        expandBtn.addEventListener('click', () => {
+            serviceQueueState.expandedHosts[item.host_id] = !serviceQueueState.expandedHosts[item.host_id];
+            renderServiceQueueRows(items);
+        });
+        expandTd.appendChild(expandBtn);
+
+        const hostTd = document.createElement('td');
+        hostTd.innerHTML = `<strong>${escapeHtml(item.ip_address)}</strong><br><span class="text-muted">${escapeHtml(item.hostname || '-')}</span>`;
+
+        const summaryTd = document.createElement('td');
+        summaryTd.innerHTML = renderStatusSummaryBadges(item.status_summary || {});
+
+        const latestTd = document.createElement('td');
+        latestTd.textContent = item.latest_seen ? new Date(item.latest_seen).toLocaleString() : '-';
+
+        const linkTd = document.createElement('td');
+        const link = document.createElement('a');
+        link.className = 'btn btn-secondary';
+        link.style.padding = '4px 8px';
+        link.style.fontSize = '12px';
+        link.href = `host.html?id=${serviceQueueState.projectId}&hostId=${item.host_id}`;
+        link.textContent = 'View';
+        linkTd.appendChild(link);
+
+        tr.appendChild(selectTd);
+        tr.appendChild(expandTd);
+        tr.appendChild(hostTd);
+        tr.appendChild(summaryTd);
+        tr.appendChild(latestTd);
+        tr.appendChild(linkTd);
+        tbody.appendChild(tr);
+
+        if (expanded) {
+            const detailTr = document.createElement('tr');
+            const detailTd = document.createElement('td');
+            detailTd.colSpan = 6;
+            detailTd.innerHTML = renderMatchingPortsTable(item.matching_ports || []);
+            detailTr.appendChild(detailTd);
+            tbody.appendChild(detailTr);
+        }
+    });
+}
+
+function syncSelectionUI() {
+    const selectedCount = Object.keys(serviceQueueState.selectedHosts).length;
+    document.getElementById('service-selected-count').textContent = `Selected: ${selectedCount}`;
+
+    const selectAll = document.getElementById('service-select-all-visible');
+    const visibleIDs = serviceQueueState.currentPageHosts.map(item => item.host_id);
+    if (!visibleIDs.length) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+        return;
+    }
+
+    const selectedVisible = visibleIDs.filter(hostID => !!serviceQueueState.selectedHosts[hostID]).length;
+    selectAll.checked = selectedVisible === visibleIDs.length;
+    selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visibleIDs.length;
 }
 
 function renderStatusSummaryBadges(summary) {
