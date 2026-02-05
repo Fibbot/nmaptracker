@@ -2,7 +2,7 @@
 
 Nmap Tracker is a lightweight, self-hosted tool for managing and visualizing Nmap scan results. It allows you to import Nmap XML reports, track host and port statuses over time, and manage scope through a unified web interface or CLI.
 
-Vibecoded as hell testing out Antigravity.
+Vibecoded as hell testing out Antigravity/Codex.
 
 <details>
 <summary>UI Screens</summary>
@@ -37,12 +37,14 @@ go build ./cmd/nmap-tracker
 
 ## Features
 
-*   **Import Parsing**: Ingests standard Nmap XML output (`-oX`).
-*   **Project Management**: Organize scans into distinct projects.
-*   **Scope Management**: Define and enforce in-scope/out-of-scope rules.
-*   **Status Tracking**: Mark ports as Open, Closed, Filtered, or Verified. Add notes to hosts and ports.
-*   **Web Interface**: Clean, responsive UI for browsing hosts and services.
-*   **Data Export**: Export project data to JSON or CSV.
+*   **Project + Scan Ingestion**: Import Nmap XML (`-oX`) into per-project datasets with persisted scan history.
+*   **Scope-Driven Workflow**: Manage in-scope/out-of-scope targeting with host/port workflow states (`scanned`, `flagged`, `in_progress`, `done`) and analyst notes.
+*   **Import Intents + Coverage Matrix**: Tag scans by intent (ping/top-ports/full TCP/UDP/vuln) and visualize coverage with missing-host drilldowns.
+*   **Import Delta Analysis**: Compare any two imports to surface net new/disappeared hosts, exposure changes, and service fingerprint drift.
+*   **Expected Asset Baseline**: Track expected IPv4 IP/CIDR inventory and evaluate unseen expected assets or out-of-baseline observations.
+*   **Service Campaign Queues**: Host-grouped SMB/LDAP/RDP/HTTP(S)/SSH queues with multi-select filters, per-host status summaries, and source import IDs.
+*   **Queue Export Utilities**: Copy selected queue IPs to clipboard or export newline-delimited TXT host lists from the service queue page.
+*   **Flexible Export + API**: Export project/host data via web endpoints (JSON/CSV/TXT) and CLI export (JSON/CSV).
 
 ## Build Instructions
 
