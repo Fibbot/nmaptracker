@@ -65,7 +65,10 @@ This is the current source-of-truth orientation doc for the implemented `feature
   - `coverage_matrix.html`, `import_delta.html`, `service_queues.html`
 - Dashboard (`project.html` + `js/dashboard.js`) now includes:
   - import intents editor,
-  - feature links (coverage/delta/service queues),
+  - a consolidated `Project Tools` hamburger menu for coverage matrix, import delta, service queues, and export actions,
+  - a single expand/collapse-all toggle for dashboard sections,
+  - import intents bulk save (`Save All`) across listed imports,
+  - plain-English helper copy explaining intents drive queue/milestone coverage interpretation (UI guidance only),
   - expected baseline CRUD + evaluate panel.
 - Hosts page (`js/hosts.js`) includes editable `latest_scan` per host.
 
@@ -124,6 +127,7 @@ This is the current source-of-truth orientation doc for the implemented `feature
 - Scope model is allow-list only (no explicit excludes).
 - Import + baseline logic are IPv4-focused.
 - No active gap/milestone endpoints in current codebase.
+- Any milestone queue wording in the dashboard is descriptive only; there is still no `/gaps` or `/queues/milestones` API endpoint.
 
 ## Tests covering implemented feature set
 - DB/query/migrations:
