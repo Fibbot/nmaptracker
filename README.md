@@ -4,6 +4,18 @@ Nmap Tracker is a lightweight, self-hosted tool for managing and visualizing Nma
 
 Vibecoded as hell testing out Antigravity/Codex.
 
+## Features
+
+*   **Project + Scan Ingestion**: Import Nmap XML (`-oX`) into per-project datasets with persisted scan history.
+*   **Scope-Driven Workflow**: Manage in-scope/out-of-scope targeting with host/port workflow states (`scanned`, `flagged`, `in_progress`, `done`) and analyst notes.
+*   **Import Intents + Coverage Matrix**: Tag scans by intent (ping/top-ports/full TCP/UDP/vuln) and visualize coverage with missing-host drilldowns.
+*   **Import Delta Analysis**: Compare any two imports to surface net new/disappeared hosts, exposure changes, and service fingerprint drift.
+*   **Expected Asset Baseline**: Track expected IPv4 IP/CIDR inventory and evaluate unseen expected assets or out-of-baseline observations.
+*   **Service Campaign Queues**: Host-grouped SMB/LDAP/RDP/HTTP(S)/SSH queues with multi-select filters, per-host status summaries, and source import IDs.
+*   **Queue Export Utilities**: Copy selected queue IPs to clipboard or export newline-delimited TXT host lists from the service queue page.
+*   **Flexible Export + API**: Export project/host data via web endpoints (JSON/CSV/TXT) and CLI export (JSON/CSV).
+
+
 <details>
 <summary>UI Screens</summary>
 <img width="1512" height="814" alt="ui - 1" src="https://github.com/user-attachments/assets/3a918b3a-34e9-49a6-8ebb-dba069f3ce9d" />
@@ -34,17 +46,6 @@ If you don't have Make installed, you can build directly with Go:
 ```bash
 go build ./cmd/nmap-tracker
 ```
-
-## Features
-
-*   **Project + Scan Ingestion**: Import Nmap XML (`-oX`) into per-project datasets with persisted scan history.
-*   **Scope-Driven Workflow**: Manage in-scope/out-of-scope targeting with host/port workflow states (`scanned`, `flagged`, `in_progress`, `done`) and analyst notes.
-*   **Import Intents + Coverage Matrix**: Tag scans by intent (ping/top-ports/full TCP/UDP/vuln) and visualize coverage with missing-host drilldowns.
-*   **Import Delta Analysis**: Compare any two imports to surface net new/disappeared hosts, exposure changes, and service fingerprint drift.
-*   **Expected Asset Baseline**: Track expected IPv4 IP/CIDR inventory and evaluate unseen expected assets or out-of-baseline observations.
-*   **Service Campaign Queues**: Host-grouped SMB/LDAP/RDP/HTTP(S)/SSH queues with multi-select filters, per-host status summaries, and source import IDs.
-*   **Queue Export Utilities**: Copy selected queue IPs to clipboard or export newline-delimited TXT host lists from the service queue page.
-*   **Flexible Export + API**: Export project/host data via web endpoints (JSON/CSV/TXT) and CLI export (JSON/CSV).
 
 ## Build Instructions
 
