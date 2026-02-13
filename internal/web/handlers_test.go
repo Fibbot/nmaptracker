@@ -472,6 +472,109 @@ func TestImportSkipsInvalidHosts(t *testing.T) {
 	}
 }
 
+func TestImportRejectsInvalidManualSourcePort(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("Foxtrot-Invalid-Source")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	xmlPayload := `<?xml version="1.0"?><nmaprun><host><address addr="192.0.2.11" addrtype="ipv4"/></host></nmaprun>`
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "scan.xml")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write([]byte(xmlPayload)); err != nil {
+		t.Fatalf("write xml: %v", err)
+	}
+	if err := writer.WriteField("source_port", "70000"); err != nil {
+		t.Fatalf("write source_port field: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestImportStoresManualSourceMetadata(t *testing.T) {
+	database, server := newTestServer(t)
+	defer database.Close()
+
+	project, err := database.CreateProject("Foxtrot-Manual-Source")
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	xmlPayload := `<?xml version="1.0"?>
+<nmaprun args="nmap -sV 192.0.2.12">
+  <host>
+    <status state="up"/>
+    <address addr="192.0.2.12" addrtype="ipv4"/>
+  </host>
+</nmaprun>`
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "scan.xml")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write([]byte(xmlPayload)); err != nil {
+		t.Fatalf("write xml: %v", err)
+	}
+	if err := writer.WriteField("scanner_label", "web-scanner"); err != nil {
+		t.Fatalf("write scanner_label field: %v", err)
+	}
+	if err := writer.WriteField("source_ip", "198.51.100.50"); err != nil {
+		t.Fatalf("write source_ip field: %v", err)
+	}
+	if err := writer.WriteField("source_port", "5050"); err != nil {
+		t.Fatalf("write source_port field: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/projects/"+strconv.FormatInt(project.ID, 10)+"/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	imports, err := database.ListScanImports(project.ID)
+	if err != nil {
+		t.Fatalf("list imports: %v", err)
+	}
+	if len(imports) != 1 {
+		t.Fatalf("expected one import, got %d", len(imports))
+	}
+	if imports[0].ScannerLabel != "web-scanner" {
+		t.Fatalf("unexpected scanner_label: %q", imports[0].ScannerLabel)
+	}
+	if imports[0].SourceIP == nil || *imports[0].SourceIP != "198.51.100.50" {
+		t.Fatalf("unexpected source_ip: %v", imports[0].SourceIP)
+	}
+	if imports[0].SourcePort == nil || *imports[0].SourcePort != 5050 {
+		t.Fatalf("unexpected source_port: %v", imports[0].SourcePort)
+	}
+}
+
 func TestListImportsIncludesIntents(t *testing.T) {
 	database, server := newTestServer(t)
 	defer database.Close()
@@ -480,12 +583,18 @@ func TestListImportsIncludesIntents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
+	sourceIP := "192.0.2.5"
+	sourcePort := 4444
 
 	record, err := database.InsertScanImport(db.ScanImport{
-		ProjectID:  project.ID,
-		Filename:   "scan.xml",
-		HostsFound: 2,
-		PortsFound: 3,
+		ProjectID:    project.ID,
+		Filename:     "scan.xml",
+		HostsFound:   2,
+		PortsFound:   3,
+		NmapArgs:     "nmap -S 192.0.2.5 --source-port 4444 198.51.100.8",
+		ScannerLabel: "scanner-web",
+		SourceIP:     &sourceIP,
+		SourcePort:   &sourcePort,
 	})
 	if err != nil {
 		t.Fatalf("insert scan import: %v", err)
@@ -507,8 +616,13 @@ func TestListImportsIncludesIntents(t *testing.T) {
 
 	var resp struct {
 		Items []struct {
-			ID      int64 `json:"id"`
-			Intents []struct {
+			ID            int64   `json:"id"`
+			NmapArgs      string  `json:"nmap_args"`
+			ScannerLabel  string  `json:"scanner_label"`
+			SourceIP      *string `json:"source_ip"`
+			SourcePort    *int    `json:"source_port"`
+			SourcePortRaw *string `json:"source_port_raw"`
+			Intents       []struct {
 				Intent     string  `json:"intent"`
 				Source     string  `json:"source"`
 				Confidence float64 `json:"confidence"`
@@ -524,6 +638,18 @@ func TestListImportsIncludesIntents(t *testing.T) {
 	}
 	if len(resp.Items[0].Intents) != 2 {
 		t.Fatalf("expected 2 intents, got %d", len(resp.Items[0].Intents))
+	}
+	if resp.Items[0].NmapArgs == "" || resp.Items[0].ScannerLabel != "scanner-web" {
+		t.Fatalf("expected import metadata in response, got %+v", resp.Items[0])
+	}
+	if resp.Items[0].SourceIP == nil || *resp.Items[0].SourceIP != "192.0.2.5" {
+		t.Fatalf("unexpected source_ip in response: %+v", resp.Items[0].SourceIP)
+	}
+	if resp.Items[0].SourcePort == nil || *resp.Items[0].SourcePort != 4444 {
+		t.Fatalf("unexpected source_port in response: %+v", resp.Items[0].SourcePort)
+	}
+	if resp.Items[0].SourcePortRaw != nil {
+		t.Fatalf("expected source_port_raw to be nil for valid parsed value, got %+v", resp.Items[0].SourcePortRaw)
 	}
 }
 

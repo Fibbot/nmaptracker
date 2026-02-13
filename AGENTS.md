@@ -7,6 +7,7 @@ Keep this file short and stable. Put deep architecture and rationale in `agent_d
 ## Project Overview
 Nmap Tracker is a self-hosted Nmap scan tracking tool with both CLI and web UI workflows.
 It imports Nmap XML into per-project datasets, tracks current host/port state plus historical observations, and supports scope, intent, coverage, delta, baseline, and service queue analysis.
+Per-import scanner source metadata is persisted on `scan_import` (`nmap_args`, `scanner_label`, `source_ip`, `source_port`, `source_port_raw`).
 
 ## Project Context
 The preferred local workflow is:
@@ -27,6 +28,7 @@ Current implemented feature docs are in `features/done/01` through `features/don
 - `cmd/nmap-tracker/main.go`: CLI entrypoint (`serve`, `projects`, `import`, `export`).
 - `internal/db/*`: data layer, migrations, and query modules.
 - `internal/importer/*`: XML/GNMAP ingestion and import intent handling.
+- Import pipeline also resolves scanner source metadata from `nmaprun.args` flags (`-S`, `-g`, `--source-port`) with manual fallback from CLI/web import options.
 - `internal/scope/*`: include-list scope matcher.
 - `internal/web/*`: API handlers + static asset hosting.
 - `agent_docs/codebase_reference.md`: deep-doc index and read order.
@@ -60,7 +62,7 @@ Deep schema behavior and query semantics belong in the deep-doc set linked above
 - Run UI server: `./nmap-tracker serve --port 8080 --db nmap-tracker.db`
 - List projects: `./nmap-tracker projects list --db nmap-tracker.db`
 - Create project: `./nmap-tracker projects create <name> --db nmap-tracker.db`
-- Import XML: `./nmap-tracker import <scan.xml> --project <name> --db nmap-tracker.db`
+- Import XML: `./nmap-tracker import <scan.xml> --project <name> [--scanner-label <label>] [--source-ip <ipv4>] [--source-port <1-65535>] --db nmap-tracker.db`
 - Export project: `./nmap-tracker export --project <name> --output <file> --format <json|csv> --db nmap-tracker.db`
 
 ## Common Queries

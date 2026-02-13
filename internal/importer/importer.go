@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,7 +56,10 @@ type ParseMetadata struct {
 
 // ImportOptions controls optional behavior during import.
 type ImportOptions struct {
-	ManualIntents []string
+	ManualIntents    []string
+	ScannerLabel     string
+	ManualSourceIP   string
+	ManualSourcePort string
 }
 
 // SuggestedIntent represents an auto-inferred intent.
@@ -70,6 +74,20 @@ type ImportStats struct {
 	InScope  int
 	OutScope int
 	Skipped  int
+}
+
+type sourceMetadata struct {
+	NmapArgs      string
+	ScannerLabel  string
+	SourceIP      *string
+	SourcePort    *int
+	SourcePortRaw *string
+}
+
+type parsedSourceMetadata struct {
+	SourceIP      *string
+	SourcePort    *int
+	SourcePortRaw *string
 }
 
 // ParseXMLFile reads an nmap XML file from disk.
@@ -129,6 +147,14 @@ func ImportObservations(database *db.DB, matcher *scope.Matcher, projectID int64
 
 // ImportObservationsWithOptions merges parsed observations into the DB for a project.
 func ImportObservationsWithOptions(database *db.DB, matcher *scope.Matcher, projectID int64, filename string, obs Observations, metadata ParseMetadata, options ImportOptions, now time.Time) (ImportStats, error) {
+	if err := ValidateImportOptions(options); err != nil {
+		return ImportStats{}, err
+	}
+	resolvedSource, err := resolveSourceMetadata(metadata.NmapArgs, options)
+	if err != nil {
+		return ImportStats{}, err
+	}
+
 	tx, err := database.Begin()
 	if err != nil {
 		return ImportStats{}, err
@@ -137,9 +163,14 @@ func ImportObservationsWithOptions(database *db.DB, matcher *scope.Matcher, proj
 
 	stats := ImportStats{
 		ScanImport: db.ScanImport{
-			ProjectID:  projectID,
-			Filename:   filename,
-			HostsFound: len(obs.Hosts),
+			ProjectID:     projectID,
+			Filename:      filename,
+			HostsFound:    len(obs.Hosts),
+			NmapArgs:      resolvedSource.NmapArgs,
+			ScannerLabel:  resolvedSource.ScannerLabel,
+			SourceIP:      resolvedSource.SourceIP,
+			SourcePort:    resolvedSource.SourcePort,
+			SourcePortRaw: resolvedSource.SourcePortRaw,
 		},
 	}
 	for _, h := range obs.Hosts {
@@ -183,6 +214,14 @@ func ImportXML(database *db.DB, matcher *scope.Matcher, projectID int64, filenam
 
 // ImportXMLWithOptions streams an Nmap XML document within a single transaction.
 func ImportXMLWithOptions(database *db.DB, matcher *scope.Matcher, projectID int64, filename string, r io.Reader, options ImportOptions, now time.Time) (ImportStats, error) {
+	if err := ValidateImportOptions(options); err != nil {
+		return ImportStats{}, err
+	}
+	initialSource, err := resolveSourceMetadata("", options)
+	if err != nil {
+		return ImportStats{}, err
+	}
+
 	tx, err := database.Begin()
 	if err != nil {
 		return ImportStats{}, err
@@ -191,8 +230,13 @@ func ImportXMLWithOptions(database *db.DB, matcher *scope.Matcher, projectID int
 
 	stats := ImportStats{
 		ScanImport: db.ScanImport{
-			ProjectID: projectID,
-			Filename:  filename,
+			ProjectID:     projectID,
+			Filename:      filename,
+			NmapArgs:      initialSource.NmapArgs,
+			ScannerLabel:  initialSource.ScannerLabel,
+			SourceIP:      initialSource.SourceIP,
+			SourcePort:    initialSource.SourcePort,
+			SourcePortRaw: initialSource.SourcePortRaw,
 		},
 	}
 
@@ -203,6 +247,32 @@ func ImportXMLWithOptions(database *db.DB, matcher *scope.Matcher, projectID int
 	stats.ScanImport = record
 
 	var nmapArgs string
+	sourceMetadataUpdated := false
+	updateSourceMetadata := func() error {
+		if sourceMetadataUpdated {
+			return nil
+		}
+		resolvedSource, err := resolveSourceMetadata(nmapArgs, options)
+		if err != nil {
+			return err
+		}
+		if err := tx.UpdateScanImportSourceMetadata(
+			stats.ScanImport.ID,
+			resolvedSource.NmapArgs,
+			resolvedSource.SourceIP,
+			resolvedSource.SourcePort,
+			resolvedSource.SourcePortRaw,
+		); err != nil {
+			return err
+		}
+		stats.ScanImport.NmapArgs = resolvedSource.NmapArgs
+		stats.ScanImport.ScannerLabel = resolvedSource.ScannerLabel
+		stats.ScanImport.SourceIP = resolvedSource.SourceIP
+		stats.ScanImport.SourcePort = resolvedSource.SourcePort
+		stats.ScanImport.SourcePortRaw = resolvedSource.SourcePortRaw
+		sourceMetadataUpdated = true
+		return nil
+	}
 	intentsInserted := false
 	insertIntents := func() error {
 		if intentsInserted {
@@ -233,6 +303,9 @@ func ImportXMLWithOptions(database *db.DB, matcher *scope.Matcher, projectID int
 
 		if start.Name.Local == "nmaprun" {
 			nmapArgs = nmapArgsFromStart(start)
+			if err := updateSourceMetadata(); err != nil {
+				return ImportStats{}, err
+			}
 			if err := insertIntents(); err != nil {
 				return ImportStats{}, err
 			}
@@ -502,6 +575,180 @@ func clampConfidence(conf float64) float64 {
 		return 1
 	}
 	return conf
+}
+
+// ValidateImportOptions validates optional source metadata values provided by callers.
+func ValidateImportOptions(options ImportOptions) error {
+	if _, err := normalizeManualSourceIP(options.ManualSourceIP); err != nil {
+		return err
+	}
+	if _, err := normalizeManualSourcePort(options.ManualSourcePort); err != nil {
+		return err
+	}
+	return nil
+}
+
+func resolveSourceMetadata(nmapArgs string, options ImportOptions) (sourceMetadata, error) {
+	manualSourceIP, err := normalizeManualSourceIP(options.ManualSourceIP)
+	if err != nil {
+		return sourceMetadata{}, err
+	}
+	manualSourcePort, err := normalizeManualSourcePort(options.ManualSourcePort)
+	if err != nil {
+		return sourceMetadata{}, err
+	}
+
+	parsed := parseSourceMetadataFromArgs(nmapArgs)
+	resolved := sourceMetadata{
+		NmapArgs:      strings.TrimSpace(nmapArgs),
+		ScannerLabel:  strings.TrimSpace(options.ScannerLabel),
+		SourceIP:      parsed.SourceIP,
+		SourcePort:    parsed.SourcePort,
+		SourcePortRaw: parsed.SourcePortRaw,
+	}
+	if resolved.SourceIP == nil {
+		resolved.SourceIP = manualSourceIP
+	}
+	if resolved.SourcePort == nil {
+		resolved.SourcePort = manualSourcePort
+	}
+	return resolved, nil
+}
+
+func parseSourceMetadataFromArgs(nmapArgs string) parsedSourceMetadata {
+	var out parsedSourceMetadata
+	tokens := strings.Fields(nmapArgs)
+	for i := 0; i < len(tokens); i++ {
+		token := strings.TrimSpace(tokens[i])
+		lowerToken := strings.ToLower(token)
+
+		if token == "-S" || strings.HasPrefix(token, "-S=") || (strings.HasPrefix(token, "-S") && len(token) > 2) {
+			candidate, consumed := parseFlagValue(tokens, i, "-S")
+			if consumed {
+				i++
+			}
+			if parsedIP, ok := parseIPv4Value(candidate); ok {
+				out.SourceIP = &parsedIP
+			} else {
+				out.SourceIP = nil
+			}
+			continue
+		}
+
+		if token == "-g" || strings.HasPrefix(token, "-g=") || (strings.HasPrefix(token, "-g") && len(token) > 2) {
+			candidate, consumed := parseFlagValue(tokens, i, "-g")
+			if consumed {
+				i++
+			}
+			out.SourcePort, out.SourcePortRaw = parseSourcePortValue(candidate)
+			continue
+		}
+
+		if lowerToken == "--source-port" || strings.HasPrefix(lowerToken, "--source-port=") {
+			candidate, consumed := parseLongFlagValue(tokens, i, "--source-port")
+			if consumed {
+				i++
+			}
+			out.SourcePort, out.SourcePortRaw = parseSourcePortValue(candidate)
+		}
+	}
+	return out
+}
+
+func parseFlagValue(tokens []string, index int, flag string) (string, bool) {
+	token := strings.TrimSpace(tokens[index])
+	if token == flag {
+		if index+1 >= len(tokens) {
+			return "", false
+		}
+		return cleanTokenValue(tokens[index+1]), true
+	}
+	if strings.HasPrefix(token, flag+"=") {
+		return cleanTokenValue(token[len(flag)+1:]), false
+	}
+	if strings.HasPrefix(token, flag) && len(token) > len(flag) {
+		return cleanTokenValue(token[len(flag):]), false
+	}
+	return "", false
+}
+
+func parseLongFlagValue(tokens []string, index int, flag string) (string, bool) {
+	token := strings.TrimSpace(tokens[index])
+	lowerToken := strings.ToLower(token)
+	if lowerToken == flag {
+		if index+1 >= len(tokens) {
+			return "", false
+		}
+		return cleanTokenValue(tokens[index+1]), true
+	}
+	prefix := flag + "="
+	if strings.HasPrefix(lowerToken, prefix) {
+		return cleanTokenValue(token[len(prefix):]), false
+	}
+	return "", false
+}
+
+func parseIPv4Value(raw string) (string, bool) {
+	raw = cleanTokenValue(raw)
+	if raw == "" {
+		return "", false
+	}
+	addr, err := netip.ParseAddr(raw)
+	if err != nil || !addr.Is4() {
+		return "", false
+	}
+	return addr.String(), true
+}
+
+func parseSourcePortValue(raw string) (*int, *string) {
+	raw = cleanTokenValue(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	portValue, err := strconv.Atoi(raw)
+	if err != nil || portValue < 1 || portValue > 65535 {
+		return nil, stringPtr(raw)
+	}
+	return intPtr(portValue), nil
+}
+
+func normalizeManualSourceIP(raw string) (*string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	addr, err := netip.ParseAddr(raw)
+	if err != nil || !addr.Is4() {
+		return nil, fmt.Errorf("invalid source_ip: must be an IPv4 address")
+	}
+	normalized := addr.String()
+	return &normalized, nil
+}
+
+func normalizeManualSourcePort(raw string) (*int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	port, err := strconv.Atoi(raw)
+	if err != nil || port < 1 || port > 65535 {
+		return nil, fmt.Errorf("invalid source_port: must be between 1 and 65535")
+	}
+	return &port, nil
+}
+
+func cleanTokenValue(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, `"'`)
+	return strings.TrimSpace(value)
+}
+
+func intPtr(value int) *int {
+	return &value
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
 
 func pickNonEmpty(primary, fallback string) string {

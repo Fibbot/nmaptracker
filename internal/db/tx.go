@@ -22,16 +22,62 @@ func (db *DB) Begin() (*Tx, error) {
 // InsertScanImport records import metadata within a transaction.
 func (tx *Tx) InsertScanImport(s ScanImport) (ScanImport, error) {
 	var out ScanImport
+	var sourceIP sql.NullString
+	var sourcePort sql.NullInt64
+	var sourcePortRaw sql.NullString
 	err := tx.QueryRow(
-		`INSERT INTO scan_import (project_id, filename, hosts_found, ports_found)
-		 VALUES (?, ?, ?, ?)
-		 RETURNING id, project_id, filename, import_time, hosts_found, ports_found`,
-		s.ProjectID, s.Filename, s.HostsFound, s.PortsFound,
-	).Scan(&out.ID, &out.ProjectID, &out.Filename, &out.ImportTime, &out.HostsFound, &out.PortsFound)
+		`INSERT INTO scan_import (
+			project_id, filename, hosts_found, ports_found, nmap_args, scanner_label, source_ip, source_port, source_port_raw
+		 )
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 RETURNING id, project_id, filename, import_time, hosts_found, ports_found, nmap_args, scanner_label, source_ip, source_port, source_port_raw`,
+		s.ProjectID,
+		s.Filename,
+		s.HostsFound,
+		s.PortsFound,
+		s.NmapArgs,
+		s.ScannerLabel,
+		nullableStringValue(s.SourceIP),
+		nullableIntValue(s.SourcePort),
+		nullableStringValue(s.SourcePortRaw),
+	).Scan(
+		&out.ID,
+		&out.ProjectID,
+		&out.Filename,
+		&out.ImportTime,
+		&out.HostsFound,
+		&out.PortsFound,
+		&out.NmapArgs,
+		&out.ScannerLabel,
+		&sourceIP,
+		&sourcePort,
+		&sourcePortRaw,
+	)
 	if err != nil {
 		return ScanImport{}, fmt.Errorf("insert scan_import: %w", err)
 	}
+	out.SourceIP = ptrStringFromNull(sourceIP)
+	out.SourcePort = ptrIntFromNull(sourcePort)
+	out.SourcePortRaw = ptrStringFromNull(sourcePortRaw)
 	return out, nil
+}
+
+// UpdateScanImportSourceMetadata updates source metadata fields for a scan import within a transaction.
+func (tx *Tx) UpdateScanImportSourceMetadata(id int64, nmapArgs string, sourceIP *string, sourcePort *int, sourcePortRaw *string) error {
+	_, err := tx.Exec(
+		`UPDATE scan_import
+		    SET nmap_args = ?, source_ip = ?, source_port = ?, source_port_raw = ?
+		  WHERE id = ?`,
+		nmapArgs,
+		nullableStringValue(sourceIP),
+		nullableIntValue(sourcePort),
+		nullableStringValue(sourcePortRaw),
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("update scan_import source metadata: %w", err)
+	}
+	return nil
 }
 
 // InsertScanImportIntent records one intent tag for a scan import.

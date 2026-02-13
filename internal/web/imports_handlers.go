@@ -31,13 +31,18 @@ func (s *Server) apiListImports(w http.ResponseWriter, r *http.Request) {
 		Confidence float64 `json:"confidence"`
 	}
 	type importResponse struct {
-		ID         int64            `json:"id"`
-		ProjectID  int64            `json:"project_id"`
-		Filename   string           `json:"filename"`
-		ImportTime string           `json:"import_time"`
-		HostsFound int              `json:"hosts_found"`
-		PortsFound int              `json:"ports_found"`
-		Intents    []intentResponse `json:"intents"`
+		ID            int64            `json:"id"`
+		ProjectID     int64            `json:"project_id"`
+		Filename      string           `json:"filename"`
+		ImportTime    string           `json:"import_time"`
+		HostsFound    int              `json:"hosts_found"`
+		PortsFound    int              `json:"ports_found"`
+		NmapArgs      string           `json:"nmap_args"`
+		ScannerLabel  string           `json:"scanner_label"`
+		SourceIP      *string          `json:"source_ip"`
+		SourcePort    *int             `json:"source_port"`
+		SourcePortRaw *string          `json:"source_port_raw"`
+		Intents       []intentResponse `json:"intents"`
 	}
 
 	resp := struct {
@@ -50,13 +55,18 @@ func (s *Server) apiListImports(w http.ResponseWriter, r *http.Request) {
 
 	for _, item := range items {
 		mapped := importResponse{
-			ID:         item.ID,
-			ProjectID:  item.ProjectID,
-			Filename:   item.Filename,
-			ImportTime: item.ImportTime.UTC().Format("2006-01-02T15:04:05Z"),
-			HostsFound: item.HostsFound,
-			PortsFound: item.PortsFound,
-			Intents:    make([]intentResponse, 0, len(item.Intents)),
+			ID:            item.ID,
+			ProjectID:     item.ProjectID,
+			Filename:      item.Filename,
+			ImportTime:    item.ImportTime.UTC().Format("2006-01-02T15:04:05Z"),
+			HostsFound:    item.HostsFound,
+			PortsFound:    item.PortsFound,
+			NmapArgs:      item.NmapArgs,
+			ScannerLabel:  item.ScannerLabel,
+			SourceIP:      item.SourceIP,
+			SourcePort:    item.SourcePort,
+			SourcePortRaw: item.SourcePortRaw,
+			Intents:       make([]intentResponse, 0, len(item.Intents)),
 		}
 		for _, intent := range item.Intents {
 			mapped.Intents = append(mapped.Intents, intentResponse{

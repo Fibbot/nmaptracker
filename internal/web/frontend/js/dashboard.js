@@ -478,7 +478,7 @@ function renderImportIntents(items) {
     if (!items || items.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 4;
+        td.colSpan = 5;
         td.className = 'text-muted';
         td.style.textAlign = 'center';
         td.textContent = 'No imports yet.';
@@ -501,7 +501,31 @@ function renderImportIntents(items) {
         timeTd.textContent = importTime;
 
         const fileTd = document.createElement('td');
-        fileTd.textContent = item.filename || '-';
+        const fileName = document.createElement('div');
+        fileName.style.fontWeight = '600';
+        fileName.textContent = item.filename || '-';
+        fileTd.appendChild(fileName);
+
+        const scannerMeta = document.createElement('div');
+        scannerMeta.style.fontSize = '12px';
+        scannerMeta.style.color = 'var(--text-dim)';
+        scannerMeta.textContent = `Scanner: ${item.scanner_label || '-'}`;
+        fileTd.appendChild(scannerMeta);
+
+        const sourceIPMeta = document.createElement('div');
+        sourceIPMeta.style.fontSize = '12px';
+        sourceIPMeta.style.color = 'var(--text-dim)';
+        sourceIPMeta.textContent = `Source IP: ${item.source_ip || '-'}`;
+        fileTd.appendChild(sourceIPMeta);
+
+        const sourcePortMeta = document.createElement('div');
+        sourcePortMeta.style.fontSize = '12px';
+        sourcePortMeta.style.color = 'var(--text-dim)';
+        sourcePortMeta.textContent = `Source Port: ${formatSourcePortDisplay(item.source_port, item.source_port_raw)}`;
+        fileTd.appendChild(sourcePortMeta);
+
+        const argsTd = document.createElement('td');
+        argsTd.appendChild(buildNmapArgsElement(item.nmap_args || ''));
 
         const intentsTd = document.createElement('td');
         intentsTd.style.whiteSpace = 'normal';
@@ -531,9 +555,63 @@ function renderImportIntents(items) {
         tr.appendChild(idTd);
         tr.appendChild(timeTd);
         tr.appendChild(fileTd);
+        tr.appendChild(argsTd);
         tr.appendChild(intentsTd);
         tbody.appendChild(tr);
     });
+}
+
+function buildNmapArgsElement(args) {
+    const wrapper = document.createElement('div');
+    wrapper.style.maxWidth = '100%';
+    wrapper.style.wordBreak = 'break-word';
+
+    if (!args) {
+        const muted = document.createElement('span');
+        muted.className = 'text-muted';
+        muted.textContent = '-';
+        wrapper.appendChild(muted);
+        return wrapper;
+    }
+
+    const maxLen = 120;
+    const truncated = args.length > maxLen ? `${args.slice(0, maxLen)}...` : args;
+    const preview = document.createElement('code');
+    preview.textContent = truncated;
+    preview.title = args;
+    preview.style.display = 'block';
+    preview.style.marginBottom = '6px';
+    wrapper.appendChild(preview);
+
+    if (args.length > maxLen) {
+        const details = document.createElement('details');
+        const summary = document.createElement('summary');
+        summary.textContent = 'Show full args';
+        summary.style.cursor = 'pointer';
+        details.appendChild(summary);
+
+        const full = document.createElement('code');
+        full.textContent = args;
+        full.style.display = 'block';
+        full.style.marginTop = '6px';
+        full.style.whiteSpace = 'pre-wrap';
+        full.style.wordBreak = 'break-word';
+        details.appendChild(full);
+
+        wrapper.appendChild(details);
+    }
+
+    return wrapper;
+}
+
+function formatSourcePortDisplay(sourcePort, sourcePortRaw) {
+    if (Number.isInteger(sourcePort)) {
+        return String(sourcePort);
+    }
+    if (typeof sourcePortRaw === 'string' && sourcePortRaw.trim() !== '') {
+        return `unparsed: ${sourcePortRaw}`;
+    }
+    return 'default (no source port spoofing)';
 }
 
 function getSelectedIntentsForRow(row) {
@@ -905,6 +983,9 @@ async function uploadFile() {
     if (selectedFiles.length === 0) return;
 
     const projectId = getProjectId();
+    const scannerLabel = (document.getElementById('import-scanner-label')?.value || '').trim();
+    const sourceIP = (document.getElementById('import-source-ip')?.value || '').trim();
+    const sourcePort = (document.getElementById('import-source-port')?.value || '').trim();
     document.getElementById('import-status').style.display = 'none';
     document.getElementById('import-progress').style.display = 'block';
 
@@ -922,6 +1003,9 @@ async function uploadFile() {
 
         const formData = new FormData();
         formData.append('file', file);
+        if (scannerLabel) formData.append('scanner_label', scannerLabel);
+        if (sourceIP) formData.append('source_ip', sourceIP);
+        if (sourcePort) formData.append('source_port', sourcePort);
 
         try {
             const response = await fetch(`/api/projects/${projectId}/import`, {

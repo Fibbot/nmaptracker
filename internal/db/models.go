@@ -21,12 +21,17 @@ type ScopeDefinition struct {
 
 // ScanImport tracks import history metadata.
 type ScanImport struct {
-	ID         int64
-	ProjectID  int64
-	Filename   string
-	ImportTime time.Time
-	HostsFound int
-	PortsFound int
+	ID            int64
+	ProjectID     int64
+	Filename      string
+	ImportTime    time.Time
+	HostsFound    int
+	PortsFound    int
+	NmapArgs      string
+	ScannerLabel  string
+	SourceIP      *string
+	SourcePort    *int
+	SourcePortRaw *string
 }
 
 // ScanImportIntent stores intent tags for one scan import.

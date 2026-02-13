@@ -28,7 +28,12 @@
       "filename": "scan.xml",
       "import_time": "2024-01-03T00:00:00Z",
       "hosts_found": 2,
-      "ports_found": 3
+      "ports_found": 3,
+      "nmap_args": "",
+      "scanner_label": "",
+      "source_ip": null,
+      "source_port": null,
+      "source_port_raw": null
     }
   ],
   "hosts": [

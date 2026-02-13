@@ -146,6 +146,21 @@ func runImport(args []string, out, errOut io.Writer) int {
 		fmt.Fprintln(errOut, "import requires --project")
 		return 1
 	}
+	scannerLabel, remaining, err := extractFlag(remaining, "scanner-label", "")
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 1
+	}
+	sourceIP, remaining, err := extractFlag(remaining, "source-ip", "")
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 1
+	}
+	sourcePort, remaining, err := extractFlag(remaining, "source-port", "")
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 1
+	}
 	if len(remaining) < 1 {
 		fmt.Fprintln(errOut, "import requires an nmap XML file path")
 		return 1
@@ -180,7 +195,17 @@ func runImport(args []string, out, errOut io.Writer) int {
 		return 1
 	}
 
-	if _, err := importer.ImportXMLFile(database, matcher, project.ID, filePath, time.Now().UTC()); err != nil {
+	options := importer.ImportOptions{
+		ScannerLabel:     scannerLabel,
+		ManualSourceIP:   sourceIP,
+		ManualSourcePort: sourcePort,
+	}
+	if err := importer.ValidateImportOptions(options); err != nil {
+		fmt.Fprintf(errOut, "import options: %v\n", err)
+		return 1
+	}
+
+	if _, err := importer.ImportXMLFileWithOptions(database, matcher, project.ID, filePath, options, time.Now().UTC()); err != nil {
 		fmt.Fprintf(errOut, "import: %v\n", err)
 		return 1
 	}

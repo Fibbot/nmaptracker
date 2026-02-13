@@ -64,6 +64,16 @@ This is a local-app guard, not full authn/authz.
 - API responses are JSON and mostly explicit structs from handlers.
 - Frontend assumes stable key names for intent labels, counts, and queue summaries.
 - Coverage intent ordering is fixed by backend (`internal/db/intents.go`).
+- Import list payload includes source-tracking metadata fields:
+  - `nmap_args`
+  - `scanner_label`
+  - `source_ip`
+  - `source_port`
+  - `source_port_raw`
+- Import upload accepts optional multipart fields:
+  - `scanner_label`
+  - `source_ip` (IPv4)
+  - `source_port` (1-65535)
 
 ## Practical Extension Pattern
 For a new UI feature:

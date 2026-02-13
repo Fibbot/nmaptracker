@@ -40,12 +40,17 @@ type ScopeDefinitionInfo struct {
 }
 
 type ScanImportInfo struct {
-	ID         int64     `json:"id"`
-	ProjectID  int64     `json:"project_id"`
-	Filename   string    `json:"filename"`
-	ImportTime time.Time `json:"import_time"`
-	HostsFound int       `json:"hosts_found"`
-	PortsFound int       `json:"ports_found"`
+	ID            int64     `json:"id"`
+	ProjectID     int64     `json:"project_id"`
+	Filename      string    `json:"filename"`
+	ImportTime    time.Time `json:"import_time"`
+	HostsFound    int       `json:"hosts_found"`
+	PortsFound    int       `json:"ports_found"`
+	NmapArgs      string    `json:"nmap_args"`
+	ScannerLabel  string    `json:"scanner_label"`
+	SourceIP      *string   `json:"source_ip"`
+	SourcePort    *int      `json:"source_port"`
+	SourcePortRaw *string   `json:"source_port_raw"`
 }
 
 // HostExport captures a host with ports for export.
@@ -204,12 +209,17 @@ func toScanImportInfos(imports []db.ScanImport) []ScanImportInfo {
 	out := make([]ScanImportInfo, 0, len(imports))
 	for _, imp := range imports {
 		out = append(out, ScanImportInfo{
-			ID:         imp.ID,
-			ProjectID:  imp.ProjectID,
-			Filename:   imp.Filename,
-			ImportTime: imp.ImportTime,
-			HostsFound: imp.HostsFound,
-			PortsFound: imp.PortsFound,
+			ID:            imp.ID,
+			ProjectID:     imp.ProjectID,
+			Filename:      imp.Filename,
+			ImportTime:    imp.ImportTime,
+			HostsFound:    imp.HostsFound,
+			PortsFound:    imp.PortsFound,
+			NmapArgs:      imp.NmapArgs,
+			ScannerLabel:  imp.ScannerLabel,
+			SourceIP:      imp.SourceIP,
+			SourcePort:    imp.SourcePort,
+			SourcePortRaw: imp.SourcePortRaw,
 		})
 	}
 	return out

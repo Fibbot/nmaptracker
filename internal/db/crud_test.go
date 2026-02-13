@@ -245,17 +245,37 @@ func TestInsertScanImport(t *testing.T) {
 	defer db.Close()
 
 	p, _ := db.CreateProject("imports")
+	sourceIP := "192.0.2.15"
+	sourcePort := 4444
+	sourcePortRaw := "raw-token"
 	record, err := db.InsertScanImport(ScanImport{
-		ProjectID:  p.ID,
-		Filename:   "scan.xml",
-		HostsFound: 3,
-		PortsFound: 5,
+		ProjectID:     p.ID,
+		Filename:      "scan.xml",
+		HostsFound:    3,
+		PortsFound:    5,
+		NmapArgs:      "nmap -S 192.0.2.15 --source-port 4444 198.51.100.10",
+		ScannerLabel:  "scanner-1",
+		SourceIP:      &sourceIP,
+		SourcePort:    &sourcePort,
+		SourcePortRaw: &sourcePortRaw,
 	})
 	if err != nil {
 		t.Fatalf("insert scan import: %v", err)
 	}
 	if record.ID == 0 || record.ProjectID != p.ID || record.Filename != "scan.xml" || record.HostsFound != 3 || record.PortsFound != 5 {
 		t.Fatalf("unexpected scan import record: %#v", record)
+	}
+	if record.NmapArgs == "" || record.ScannerLabel != "scanner-1" {
+		t.Fatalf("expected metadata fields to be persisted, got %#v", record)
+	}
+	if record.SourceIP == nil || *record.SourceIP != sourceIP {
+		t.Fatalf("expected source_ip %q, got %v", sourceIP, record.SourceIP)
+	}
+	if record.SourcePort == nil || *record.SourcePort != sourcePort {
+		t.Fatalf("expected source_port %d, got %v", sourcePort, record.SourcePort)
+	}
+	if record.SourcePortRaw == nil || *record.SourcePortRaw != sourcePortRaw {
+		t.Fatalf("expected source_port_raw %q, got %v", sourcePortRaw, record.SourcePortRaw)
 	}
 	if record.ImportTime.IsZero() {
 		t.Fatalf("expected import_time to be set")

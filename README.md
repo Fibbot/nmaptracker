@@ -7,6 +7,7 @@ Vibecoded as hell testing out Antigravity/Codex.
 ## Features
 
 *   **Project + Scan Ingestion**: Import Nmap XML (`-oX`) into per-project datasets with persisted scan history.
+*   **Scanner Source Tracking**: Persist per-import scanner metadata (`nmaprun.args`, scanner label, source IP, source port/raw source-port token) with parsed-from-args + manual fallback behavior.
 *   **Scope-Driven Workflow**: Manage in-scope/out-of-scope targeting with host/port workflow states (`scanned`, `flagged`, `in_progress`, `done`) and analyst notes.
 *   **Import Intents + Coverage Matrix**: Tag scans by intent (ping/top-ports/full TCP/UDP/vuln) and visualize coverage with missing-host drilldowns.
 *   **Import Delta Analysis**: Compare any two imports to surface net new/disappeared hosts, exposure changes, and service fingerprint drift.
@@ -93,6 +94,9 @@ nmap-tracker import <xml-file> --project <project-name> [--db <path>]
     *   `<xml-file>`: Path to the Nmap XML output.
 *   **Flags**:
     *   `--project`: (Required) Name of the target project.
+    *   `--scanner-label`: Optional operator label for scanner identity.
+    *   `--source-ip`: Optional manual IPv4 source IP fallback when `-S` is absent from XML args.
+    *   `--source-port`: Optional manual source port fallback (1-65535) when `-g/--source-port` is absent from XML args.
     *   `--db`: Path to SQLite DB (default: `nmap-tracker.db`).
 
 ### 3. `serve`

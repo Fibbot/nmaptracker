@@ -37,6 +37,13 @@ func TestMigrationsCreateSchema(t *testing.T) {
 		}
 	}
 
+	scanImportCols := mustTableColumns(t, db, "scan_import")
+	for _, required := range []string{"nmap_args", "scanner_label", "source_ip", "source_port", "source_port_raw"} {
+		if _, ok := scanImportCols[required]; !ok {
+			t.Fatalf("expected scan_import column %q to exist, got columns: %v", required, keys(scanImportCols))
+		}
+	}
+
 	wantIndexes := map[string]struct{}{
 		"idx_host_project":                    {},
 		"idx_host_ip":                         {},
@@ -220,6 +227,31 @@ func mustListStrings(t *testing.T, db *DB, query string) map[string]struct{} {
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("rows err: %v", err)
+	}
+	return result
+}
+
+func mustTableColumns(t *testing.T, db *DB, table string) map[string]struct{} {
+	t.Helper()
+	rows, err := db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		t.Fatalf("table info for %s: %v", table, err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]struct{})
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			t.Fatalf("scan table_info row for %s: %v", table, err)
+		}
+		result[name] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate table_info rows for %s: %v", table, err)
 	}
 	return result
 }

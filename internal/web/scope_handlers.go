@@ -209,13 +209,23 @@ func (s *Server) apiImportXML(w http.ResponseWriter, r *http.Request) {
 
 	// Import
 	manualIntents := collectManualImportIntents(r.MultipartForm.Value["intent"], r.MultipartForm.Value["intents"])
+	options := importer.ImportOptions{
+		ManualIntents:    manualIntents,
+		ScannerLabel:     firstMultipartValue(r.MultipartForm.Value["scanner_label"]),
+		ManualSourceIP:   firstMultipartValue(r.MultipartForm.Value["source_ip"]),
+		ManualSourcePort: firstMultipartValue(r.MultipartForm.Value["source_port"]),
+	}
+	if err := importer.ValidateImportOptions(options); err != nil {
+		s.badRequest(w, err)
+		return
+	}
 	stats, err := importer.ImportXMLWithOptions(
 		s.DB,
 		matcher,
 		projectID,
 		header.Filename,
 		file,
-		importer.ImportOptions{ManualIntents: manualIntents},
+		options,
 		time.Now().UTC(),
 	)
 	if err != nil {
@@ -247,4 +257,14 @@ func collectManualImportIntents(values ...[]string) []string {
 		}
 	}
 	return intents
+}
+
+func firstMultipartValue(values []string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

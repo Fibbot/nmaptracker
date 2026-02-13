@@ -73,6 +73,21 @@
                     <div class="import-section">
                         <p class="text-muted">Upload an Nmap XML file to import hosts and ports into this project.</p>
 
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 12px;">
+                            <label style="display: flex; flex-direction: column; gap: 6px;">
+                                <span class="text-muted">Scanner Label (optional)</span>
+                                <input id="import-scanner-label" type="text" placeholder="scanner-a">
+                            </label>
+                            <label style="display: flex; flex-direction: column; gap: 6px;">
+                                <span class="text-muted">Source IP (optional, IPv4)</span>
+                                <input id="import-source-ip" type="text" placeholder="192.0.2.10">
+                            </label>
+                            <label style="display: flex; flex-direction: column; gap: 6px;">
+                                <span class="text-muted">Source Port (optional)</span>
+                                <input id="import-source-port" type="text" inputmode="numeric" placeholder="4444">
+                            </label>
+                        </div>
+
                         <div class="import-dropzone" id="import-dropzone">
                             <input type="file" id="import-file" accept=".xml" style="display: none;">
                             <button class="dropzone-content btn-secondary" style="background:none; border:none;"
@@ -147,13 +162,14 @@
                                 <tr>
                                     <th style="width: 90px;">Import ID</th>
                                     <th style="width: 210px;">Time</th>
-                                    <th>Filename</th>
+                                    <th style="min-width: 220px;">Filename / Source</th>
+                                    <th style="min-width: 320px;">Nmap Args</th>
                                     <th style="min-width: 360px;">Intents</th>
                                 </tr>
                             </thead>
                             <tbody id="import-intents-body">
                                 <tr>
-                                    <td colspan="4" class="text-muted" style="text-align: center;">Loading imports...</td>
+                                    <td colspan="5" class="text-muted" style="text-align: center;">Loading imports...</td>
                                 </tr>
                             </tbody>
                         </table>

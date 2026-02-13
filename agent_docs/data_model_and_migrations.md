@@ -15,6 +15,12 @@ This split enables fast operational edits while preserving import history.
 ### Import metadata
 - `scan_import`: one row per imported file.
 - `scan_import_intent`: intent tags attached to an import.
+- `scan_import` source metadata fields:
+  - `nmap_args`
+  - `scanner_label`
+  - `source_ip`
+  - `source_port`
+  - `source_port_raw`
 
 ### Current merged state
 - `host`: canonical host row per `project_id + ip_address`.
@@ -58,6 +64,13 @@ Adds:
 ### `005_remove_parking_lot_status.sql`
 Normalizes legacy work status values:
 - maps `parking_lot` to `flagged` in `port.work_status`.
+
+### `006_add_scan_import_source_metadata.sql`
+Adds source-tracking fields on `scan_import`:
+- raw command args (`nmap_args`)
+- operator scanner label (`scanner_label`)
+- canonical source metadata (`source_ip`, `source_port`)
+- raw unparsed source-port token (`source_port_raw`)
 
 ## DB Open Behavior
 `internal/db/db.go` applies runtime DB initialization:

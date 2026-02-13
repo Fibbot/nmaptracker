@@ -9,22 +9,50 @@ import (
 // InsertScanImport records import metadata.
 func (db *DB) InsertScanImport(s ScanImport) (ScanImport, error) {
 	var out ScanImport
+	var sourceIP sql.NullString
+	var sourcePort sql.NullInt64
+	var sourcePortRaw sql.NullString
 	err := db.QueryRow(
-		`INSERT INTO scan_import (project_id, filename, hosts_found, ports_found)
-		 VALUES (?, ?, ?, ?)
-		 RETURNING id, project_id, filename, import_time, hosts_found, ports_found`,
-		s.ProjectID, s.Filename, s.HostsFound, s.PortsFound,
-	).Scan(&out.ID, &out.ProjectID, &out.Filename, &out.ImportTime, &out.HostsFound, &out.PortsFound)
+		`INSERT INTO scan_import (
+			project_id, filename, hosts_found, ports_found, nmap_args, scanner_label, source_ip, source_port, source_port_raw
+		 )
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 RETURNING id, project_id, filename, import_time, hosts_found, ports_found, nmap_args, scanner_label, source_ip, source_port, source_port_raw`,
+		s.ProjectID,
+		s.Filename,
+		s.HostsFound,
+		s.PortsFound,
+		s.NmapArgs,
+		s.ScannerLabel,
+		nullableStringValue(s.SourceIP),
+		nullableIntValue(s.SourcePort),
+		nullableStringValue(s.SourcePortRaw),
+	).Scan(
+		&out.ID,
+		&out.ProjectID,
+		&out.Filename,
+		&out.ImportTime,
+		&out.HostsFound,
+		&out.PortsFound,
+		&out.NmapArgs,
+		&out.ScannerLabel,
+		&sourceIP,
+		&sourcePort,
+		&sourcePortRaw,
+	)
 	if err != nil {
 		return ScanImport{}, fmt.Errorf("insert scan_import: %w", err)
 	}
+	out.SourceIP = ptrStringFromNull(sourceIP)
+	out.SourcePort = ptrIntFromNull(sourcePort)
+	out.SourcePortRaw = ptrStringFromNull(sourcePortRaw)
 	return out, nil
 }
 
 // ListScanImports returns scan imports for a project ordered by id.
 func (db *DB) ListScanImports(projectID int64) ([]ScanImport, error) {
 	rows, err := db.Query(
-		`SELECT id, project_id, filename, import_time, hosts_found, ports_found
+		`SELECT id, project_id, filename, import_time, hosts_found, ports_found, nmap_args, scanner_label, source_ip, source_port, source_port_raw
 		 FROM scan_import WHERE project_id = ? ORDER BY id`,
 		projectID,
 	)
@@ -36,9 +64,27 @@ func (db *DB) ListScanImports(projectID int64) ([]ScanImport, error) {
 	var imports []ScanImport
 	for rows.Next() {
 		var s ScanImport
-		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Filename, &s.ImportTime, &s.HostsFound, &s.PortsFound); err != nil {
+		var sourceIP sql.NullString
+		var sourcePort sql.NullInt64
+		var sourcePortRaw sql.NullString
+		if err := rows.Scan(
+			&s.ID,
+			&s.ProjectID,
+			&s.Filename,
+			&s.ImportTime,
+			&s.HostsFound,
+			&s.PortsFound,
+			&s.NmapArgs,
+			&s.ScannerLabel,
+			&sourceIP,
+			&sourcePort,
+			&sourcePortRaw,
+		); err != nil {
 			return nil, fmt.Errorf("scan scan_import: %w", err)
 		}
+		s.SourceIP = ptrStringFromNull(sourceIP)
+		s.SourcePort = ptrIntFromNull(sourcePort)
+		s.SourcePortRaw = ptrStringFromNull(sourcePortRaw)
 		imports = append(imports, s)
 	}
 	if err := rows.Err(); err != nil {
@@ -50,18 +96,36 @@ func (db *DB) ListScanImports(projectID int64) ([]ScanImport, error) {
 // GetScanImportForProject fetches one scan import scoped to a project.
 func (db *DB) GetScanImportForProject(projectID, importID int64) (ScanImport, bool, error) {
 	var item ScanImport
+	var sourceIP sql.NullString
+	var sourcePort sql.NullInt64
+	var sourcePortRaw sql.NullString
 	err := db.QueryRow(
-		`SELECT id, project_id, filename, import_time, hosts_found, ports_found
+		`SELECT id, project_id, filename, import_time, hosts_found, ports_found, nmap_args, scanner_label, source_ip, source_port, source_port_raw
 		   FROM scan_import
 		  WHERE id = ? AND project_id = ?`,
 		importID, projectID,
-	).Scan(&item.ID, &item.ProjectID, &item.Filename, &item.ImportTime, &item.HostsFound, &item.PortsFound)
+	).Scan(
+		&item.ID,
+		&item.ProjectID,
+		&item.Filename,
+		&item.ImportTime,
+		&item.HostsFound,
+		&item.PortsFound,
+		&item.NmapArgs,
+		&item.ScannerLabel,
+		&sourceIP,
+		&sourcePort,
+		&sourcePortRaw,
+	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return ScanImport{}, false, nil
 		}
 		return ScanImport{}, false, fmt.Errorf("get scan import for project: %w", err)
 	}
+	item.SourceIP = ptrStringFromNull(sourceIP)
+	item.SourcePort = ptrIntFromNull(sourcePort)
+	item.SourcePortRaw = ptrStringFromNull(sourcePortRaw)
 	return item, true, nil
 }
 
@@ -69,6 +133,7 @@ func (db *DB) GetScanImportForProject(projectID, importID int64) (ScanImport, bo
 func (db *DB) ListScanImportsWithIntents(projectID int64) ([]ScanImportWithIntents, error) {
 	rows, err := db.Query(
 		`SELECT si.id, si.project_id, si.filename, si.import_time, si.hosts_found, si.ports_found,
+		        si.nmap_args, si.scanner_label, si.source_ip, si.source_port, si.source_port_raw,
 		        sii.id, sii.scan_import_id, sii.intent, sii.source, sii.confidence, sii.created_at
 		   FROM scan_import si
 		   LEFT JOIN scan_import_intent sii ON sii.scan_import_id = si.id
@@ -85,6 +150,9 @@ func (db *DB) ListScanImportsWithIntents(projectID int64) ([]ScanImportWithInten
 	byID := make(map[int64]int)
 	for rows.Next() {
 		var item ScanImportWithIntents
+		var sourceIP sql.NullString
+		var sourcePort sql.NullInt64
+		var sourcePortRaw sql.NullString
 		var intentID sql.NullInt64
 		var intentScanImportID sql.NullInt64
 		var intent sql.NullString
@@ -98,6 +166,11 @@ func (db *DB) ListScanImportsWithIntents(projectID int64) ([]ScanImportWithInten
 			&item.ImportTime,
 			&item.HostsFound,
 			&item.PortsFound,
+			&item.NmapArgs,
+			&item.ScannerLabel,
+			&sourceIP,
+			&sourcePort,
+			&sourcePortRaw,
 			&intentID,
 			&intentScanImportID,
 			&intent,
@@ -107,6 +180,9 @@ func (db *DB) ListScanImportsWithIntents(projectID int64) ([]ScanImportWithInten
 		); err != nil {
 			return nil, fmt.Errorf("scan import with intents: %w", err)
 		}
+		item.SourceIP = ptrStringFromNull(sourceIP)
+		item.SourcePort = ptrIntFromNull(sourcePort)
+		item.SourcePortRaw = ptrStringFromNull(sourcePortRaw)
 
 		idx, ok := byID[item.ID]
 		if !ok {

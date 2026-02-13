@@ -23,6 +23,7 @@ Main orchestration is in `internal/importer/importer.go`.
 ### Transactional sequence
 1. Start DB transaction.
 2. Insert `scan_import` row.
+   - Persist raw `nmaprun.args` and derived source metadata (`source_ip`, `source_port`, `source_port_raw`) plus optional `scanner_label`.
 3. Resolve intent set and persist `scan_import_intent`.
 4. Parse hosts/ports from XML stream.
 5. Validate host IP (IPv4 for streaming path).
@@ -56,6 +57,16 @@ Auto inference inspects Nmap args and filename patterns, including:
 - `--script vuln` -> `vuln_nse`
 
 Manual intents override duplicate auto suggestions in final resolved output.
+
+## Source Metadata Resolution
+Source metadata is tracked per import (not per host/port):
+- Parse from XML `nmaprun.args` when present:
+  - `-S` => source IP
+  - `-g` / `--source-port` => source port
+- Parsed values take precedence over manual input.
+- Manual fields (`scanner_label`, `source_ip`, `source_port`) are accepted from CLI/web import flows as fallback.
+- If parsed source-port token is invalid/out-of-range, canonical `source_port` can still fall back to manual input while raw parsed token is preserved in `source_port_raw`.
+- Empty source-port metadata should be interpreted as default scanner behavior (no source-port spoofing).
 
 ## Scope Interaction
 The matcher determines per-host `in_scope` state during import.
